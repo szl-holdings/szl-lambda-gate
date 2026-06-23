@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Nix / kernel-builder
+result
+result-*
+.direnv/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Dev scratch
+_probe.py
+scripts_*.py
+*_dev*.txt
+DEV*_REPORT.md
+research_notes_*.md
+stress_probe.py

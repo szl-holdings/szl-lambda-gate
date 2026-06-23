@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "szl_lambda_gate"
+abstract: >-
+  The Λ (Lambda-Spine) aggregator as a universal kernel for the Hugging Face
+  Kernel Hub. A pure-PyTorch weighted geometric mean over axis scores in [0,1]
+  with an advisory governance gate and the four carried axioms (A1-A4) as
+  runtime self-checks. Λ is a non-compensatory, advisory signal — not proven
+  trust; Λ-uniqueness remains Conjecture 1 (open).
+type: software
+version: 0.2.0
+license: Apache-2.0
+repository-url: "https://huggingface.co/SZLHOLDINGS/szl-lambda-gate"
+authors:
+  - given-names: Stephen
+    family-names: Lutar
+    orcid: "https://orcid.org/0009-0001-0110-4173"
+    affiliation: "SZL Holdings"
+keywords:
+  - kernel
+  - aggregator
+  - governance
+  - weighted-geometric-mean
+  - pytorch
+  - provenance
+references:
+  - type: software
+    title: "lutar-lean — machine-checked Λ proofs (Conjecture 1, open)"
+    doi: "10.5281/zenodo.20434308"

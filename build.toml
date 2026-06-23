@@ -1,0 +1,5 @@
+[general]
+name = "szl_lambda_gate"
+
+[torch]
+universal = true

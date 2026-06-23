@@ -1,0 +1,37 @@
+# SZL Holdings — szl_lambda_gate
+#
+# Informational / packaging metadata for the universal Kernel Hub kernel.
+# This file intentionally declares NO build-system / build backend: the
+# kernel is a UNIVERSAL (pure-Python) kernel built and distributed via
+# kernel-builder + the `kernels` loader (get_kernel), NOT via a normal
+# pip/PEP 517 build. It is kept purely descriptive to match the universal
+# Hub layout.
+
+[project]
+name = "szl-lambda-gate"
+version = "0.2.0"
+description = "The Λ (Lambda-Spine) aggregator as a universal kernel — a pure-PyTorch weighted geometric mean over axis scores in [0,1] with an advisory governance gate and the four carried axioms as runtime self-checks. Λ is advisory, not proven trust (Conjecture 1, open)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "SZL Holdings" },
+    { name = "Stephen Lutar" },
+]
+keywords = [
+    "pytorch",
+    "kernel",
+    "kernel-hub",
+    "aggregator",
+    "governance",
+    "weighted-geometric-mean",
+    "universal-kernel",
+    "provenance",
+]
+dependencies = [
+    "torch>=2.5",
+]
+
+[project.urls]
+Homepage = "https://huggingface.co/SZLHOLDINGS/szl-lambda-gate"
+Repository = "https://huggingface.co/SZLHOLDINGS/szl-lambda-gate"
