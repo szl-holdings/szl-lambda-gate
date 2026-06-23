@@ -160,3 +160,12 @@ Apache-2.0 — see [`LICENSE`](./LICENSE). Copyright 2026 SZL Holdings.
 <a href="https://github.com/szl-holdings/szl-lambda-gate">github.com/szl-holdings/szl-lambda-gate</a> ·
 <a href="https://huggingface.co/SZLHOLDINGS/szl-lambda-gate">huggingface.co/SZLHOLDINGS/szl-lambda-gate</a>
 </sub>
+
+---
+
+## Holographic showcase
+
+Live 3D holographic Space (advisory amber lattice, 50 tests — Λ is Conjecture 1,
+uniqueness OPEN, never "proven trust"):
+https://huggingface.co/spaces/SZLHOLDINGS/lambda-gate-holo
+Part of the SZL governed substrate: https://huggingface.co/spaces/SZLHOLDINGS/szl-substrate
