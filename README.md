@@ -169,3 +169,9 @@ Live 3D holographic Space (advisory amber lattice, 50 tests — Λ is Conjecture
 uniqueness OPEN, never "proven trust"):
 https://huggingface.co/spaces/SZLHOLDINGS/lambda-gate-holo
 Part of the SZL governed substrate: https://huggingface.co/spaces/SZLHOLDINGS/szl-substrate
+
+## Live playground
+
+Drive the 13 yuyay axes and watch Λ recompute live (weighted geometric mean;
+zero any axis → Λ→0 → blocked). Λ is Conjecture 1, advisory, uniqueness OPEN:
+https://huggingface.co/spaces/SZLHOLDINGS/lambda-aggregator-live
