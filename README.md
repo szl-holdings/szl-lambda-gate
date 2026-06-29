@@ -142,7 +142,7 @@ The universal-kernel constraint (stdlib + torch only) is intentional: it keeps t
 
 ## About SZL Holdings
 
-SZL Holdings, founded by **Stephen Lutar**, builds governed-AI infrastructure — provenance, observability, and security tooling for AI systems. This kernel applies that governance doctrine at the level of a single PyTorch operation: a conservative, honestly-labeled, advisory aggregator. See the [SZL Holdings Hugging Face org](https://huggingface.co/SZLHOLDINGS) and the [a11oy governed-AI platform](https://a11oy.net).
+SZL Holdings, founded by **Stephen Lutar**, builds governed-AI infrastructure — provenance, observability, and security tooling for AI systems. This kernel applies that governance doctrine at the level of a single PyTorch operation: a conservative, honestly-labeled, advisory aggregator. See the [SZL Holdings Hugging Face org](https://huggingface.co/SZLHOLDINGS) and the [a11oy governed-AI platform](https://a-11-oy.com).
 
 ## Citation
 
@@ -156,7 +156,7 @@ Apache-2.0 — see [`LICENSE`](./LICENSE). Copyright 2026 SZL Holdings.
 
 <sub>
 <b>SZL Holdings</b> · Λ = Conjecture 1 (advisory, weighted geometric mean) · uniqueness OPEN · NOT proven trust ·
-<a href="https://a11oy.net">a11oy.net</a> ·
+<a href="https://a-11-oy.com">a-11-oy.com</a> ·
 <a href="https://github.com/szl-holdings/szl-lambda-gate">github.com/szl-holdings/szl-lambda-gate</a> ·
 <a href="https://huggingface.co/SZLHOLDINGS/szl-lambda-gate">huggingface.co/SZLHOLDINGS/szl-lambda-gate</a>
 </sub>
