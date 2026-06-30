@@ -163,15 +163,11 @@ Apache-2.0 — see [`LICENSE`](./LICENSE). Copyright 2026 SZL Holdings.
 
 ---
 
-## Holographic showcase
+## Interactive showcases (roadmap)
 
-Live 3D holographic Space (advisory amber lattice, 50 tests — Λ is Conjecture 1,
-uniqueness OPEN, never "proven trust"):
-https://huggingface.co/spaces/SZLHOLDINGS/lambda-gate-holo
-Part of the SZL governed substrate: https://huggingface.co/spaces/SZLHOLDINGS/szl-substrate
+Companion HF Spaces (`lambda-gate-holo`, `lambda-aggregator-live`, and the broader
+`szl-substrate` showcase) are on the roadmap and **not yet deployed** — all three
+return HTTP 404 as of 2026-06-30. When available, links will appear here.
 
-## Live playground
-
-Drive the 13 yuyay axes and watch Λ recompute live (weighted geometric mean;
-zero any axis → Λ→0 → blocked). Λ is Conjecture 1, advisory, uniqueness OPEN:
-https://huggingface.co/spaces/SZLHOLDINGS/lambda-aggregator-live
+In the meantime, the kernel itself is fully functional — see [Quickstart](#quickstart).
+The broader SZL governed-AI platform: [huggingface.co/SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS).
