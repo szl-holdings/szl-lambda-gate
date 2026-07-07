@@ -38,6 +38,11 @@ from typing import Optional
 import torch
 
 from . import layers  # noqa: F401  (must be importable for Hub layer mapping)
+# CONSOLIDATION (Wave D): the governed-norm universal kernel is folded in here
+# as a subpackage so szl-lambda-gate is the ONE canonical kernels package. The
+# source repo szl-holdings/szl-governed-norm is DEPRECATED and points here;
+# nothing was deleted (additive, reversible copy). Λ stays Conjecture 1.
+from . import governed_norm  # noqa: F401  (folded-in governed normalization kernels)
 from ._lambda import YUYAY_AXES, YUYAY_FLOORS, LambdaGateResult
 from ._lambda import find_axiom_violation as _find_axiom_violation
 from ._lambda import is_bounded_by_max as _is_bounded_by_max
@@ -68,7 +73,23 @@ __all__ = [
     "DOCTRINE_FOOTER",
     "PROVENANCE",
     "__version__",
+    # ---- folded-in governed-norm kernels (Wave D consolidation) ----
+    "governed_norm",
+    "rms_norm",
+    "layer_norm",
+    "fused_add_rms_norm",
 ]
+
+# ---- folded-in governed-norm surface (Wave D consolidation) ---------------- #
+# Convenience top-level re-exports of the governed normalization kernels that
+# were absorbed from szl-governed-norm. The full surface (ReceiptChain,
+# emit_receipt, receipt_* helpers, selfcheck, layers) lives under
+# ``szl_lambda_gate.governed_norm``. These are a DIFFERENT kernel family from Λ
+# (normalization, not the Λ aggregator); Λ itself remains Conjecture 1
+# (advisory, uniqueness OPEN) and is never described as proven trust.
+rms_norm = governed_norm.rms_norm
+layer_norm = governed_norm.layer_norm
+fused_add_rms_norm = governed_norm.fused_add_rms_norm
 
 __version__ = "0.2.0"
 DOCTRINE_FOOTER = (
