@@ -4,6 +4,8 @@ tags:
 license: apache-2.0
 ---
 
+> **SZL Holdings** · Doctrine v11 · Λ = Conjecture 1 (advisory, never "green"/theorem) · canonical [a-11-oy.com](https://a-11-oy.com)
+
 # szl-lambda-gate
 
 > **GitHub mirror** of the Kernel Hub kernel published at **[huggingface.co/SZLHOLDINGS/szl-lambda-gate](https://huggingface.co/SZLHOLDINGS/szl-lambda-gate)**. The Hugging Face repo is the canonical `get_kernel` source; this repository mirrors the same source of truth.
