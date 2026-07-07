@@ -10,7 +10,9 @@ license: apache-2.0
 
 **The Λ (Lambda-Spine) aggregator as a universal kernel — a non-compensatory, *advisory* governance roll-up for the Hugging Face Kernel Hub.**
 
-> Λ is the weighted geometric mean of axis scores in `[0,1]`. Any single zeroed axis drives the whole aggregate to `0`: a conservative, non-compensatory signal. It is **advisory** — *not* proven trust, *not* a closed theorem.
+> Λ is the weighted geometric mean of axis scores in `[0,1]`. Any single zeroed axis drives the whole aggregate to `0`: a conservative, non-compensatory signal. It is **advisory** — *not* proven trust, *not* a closed theorem. **Λ uniqueness = Conjecture 1 (OPEN)**; it is never described as proven anywhere in this repo.
+
+> **📦 Canonical kernels package (Wave D consolidation).** This repo is the **canonical SZL kernels package**. The former `szl-holdings/szl-governed-norm` (governed RMSNorm/LayerNorm) has been **folded in** here as the [`szl_lambda_gate.governed_norm`](./torch-ext/szl_lambda_gate/governed_norm) subpackage — `rms_norm`, `layer_norm`, `fused_add_rms_norm`, their SHA3-256 hash-chained governance receipts, `ReceiptChain`, `emit_receipt`, and `selfcheck()`. `szl-governed-norm` is now **DEPRECATED** and points here (it was **not deleted**; archiving is a later founder step). The norm kernels are a *different kernel family* from the Λ aggregator; folding them in does not change Λ's status (still Conjecture 1, advisory).
 
 A universal (pure-PyTorch) kernel from [SZL Holdings](https://huggingface.co/SZLHOLDINGS). It ports the canonical Λ aggregator into a differentiable, `torch.compile`-friendly torch op, plus an advisory governance gate (Λ vs a threshold), the four carried axioms as real runtime self-checks, and pure `nn.Module` layers.
 
