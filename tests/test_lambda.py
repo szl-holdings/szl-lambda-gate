@@ -520,3 +520,63 @@ def test_yuyay_weights_usable_in_gate():
 
 def test_version_bumped_to_0_2_0():
     assert lg.__version__ == "0.2.0"
+
+
+# --------------------------------------------------------------------------- #
+# Threshold-bounds hardening: the advisory gate threshold must lie within Λ's  #
+# range [0,1]. Λ ∈ [0,1], so a threshold outside that range is a               #
+# misconfiguration — enforce it up front instead of emitting a wrong pass mask.#
+# --------------------------------------------------------------------------- #
+def test_gate_rejects_below_zero_threshold_regression():
+    """HARDENING: a NEGATIVE threshold used to advisory-PASS a fully-failing
+    (Λ=0) candidate — e.g. a NaN/±Inf garbage axis vector routes to Λ=0 and
+    0 >= t is True for any t < 0. A conservative admission gate must never
+    admit a zeroed candidate, so an out-of-[0,1] threshold is now rejected."""
+    for garbage in (
+        torch.tensor([float("nan"), 0.9, 0.9], dtype=torch.float64),
+        torch.tensor([float("inf"), 0.9, 0.9], dtype=torch.float64),
+        torch.tensor([0.0, 0.9, 0.9], dtype=torch.float64),
+    ):
+        assert lg.lambda_aggregate(garbage).item() == 0.0
+        with pytest.raises(ValueError):
+            lg.lambda_gate(garbage, threshold=-0.5)
+
+
+def test_gate_rejects_out_of_range_threshold():
+    axes = torch.tensor([0.9, 0.8, 0.95], dtype=torch.float64)
+    for bad in (-2.0, -1.0, -0.1, 1.0001, 1.5, 2.0):
+        with pytest.raises(ValueError):
+            lg.lambda_gate(axes, threshold=bad)
+
+
+def test_gate_accepts_boundary_thresholds():
+    """The domain EDGES are valid: t=0.0 (admit-all) and t=1.0 (require Λ==1)."""
+    axes = torch.tensor([0.9, 0.8, 0.95], dtype=torch.float64)
+    # t = 0.0 admits any non-negative Λ.
+    assert bool(lg.lambda_gate(axes, threshold=0.0).passed) is True
+    # t = 1.0 admits only a perfect (Λ == 1) candidate.
+    perfect = torch.ones(3, dtype=torch.float64)
+    assert bool(lg.lambda_gate(perfect, threshold=1.0).passed) is True
+    assert bool(lg.lambda_gate(axes, threshold=1.0).passed) is False  # Λ < 1
+
+
+def test_gate_rejects_nonfinite_threshold_both_infinities_and_nan():
+    axes = torch.tensor([0.5, 0.5], dtype=torch.float64)
+    for bad in (float("inf"), float("-inf"), float("nan")):
+        with pytest.raises(ValueError):
+            lg.lambda_gate(axes, threshold=bad)
+
+
+def test_gate_batch_rejects_out_of_range_threshold():
+    C = torch.rand(4, 3, dtype=torch.float64)
+    for bad in (-0.5, -1.0, 1.5, float("inf")):
+        with pytest.raises(ValueError):
+            lg.lambda_gate_batch(C, threshold=bad)
+
+
+def test_gate_batch_accepts_boundary_thresholds():
+    C = torch.rand(5, 3, dtype=torch.float64)
+    for good in (0.0, 0.5, 1.0):
+        res = lg.lambda_gate_batch(C, threshold=good)
+        assert res.threshold == good
+        assert res.advisory is True

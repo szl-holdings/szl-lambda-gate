@@ -125,8 +125,11 @@ def lambda_gate(
     threshold: float = 0.5,
 ) -> LambdaGateResult:
     """ADVISORY Λ governance gate: returns LambdaGateResult(score, passed,
-    threshold, advisory). ``passed`` = Λ(axes) >= threshold. A pass is an
-    advisory, non-compensatory signal — NOT proven trust (Λ = Conjecture 1).
+    threshold, advisory). ``passed`` = Λ(axes) >= threshold. ``threshold`` must
+    lie within Λ's range [0,1] (a value outside it is a misconfiguration — a
+    negative threshold would advisory-pass a fully-failing Λ=0 candidate — and
+    is rejected). A pass is an advisory, non-compensatory signal — NOT proven
+    trust (Λ = Conjecture 1).
     """
     return _lambda_gate(axes, weights=weights, threshold=threshold)
 
@@ -140,7 +143,9 @@ def lambda_gate_batch(
 
     The realistic per-inference-step call: score all N candidates at once and
     return the advisory pass mask. Returns LambdaGateResult(score, passed,
-    threshold, advisory) with score/passed of shape (..., N). NOT proven trust.
+    threshold, advisory) with score/passed of shape (..., N). ``threshold``
+    must lie within Λ's range [0,1] (same domain guard as ``lambda_gate``).
+    NOT proven trust.
     """
     return _lambda_gate_batch(candidates, weights=weights, threshold=threshold)
 
