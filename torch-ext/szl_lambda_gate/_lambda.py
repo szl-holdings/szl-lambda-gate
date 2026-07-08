@@ -191,12 +191,26 @@ def lambda_gate(
     Computes Λ(x) (see :func:`lambda_aggregate`) and compares it to
     ``threshold``: pass := Λ(x) >= threshold.
 
+    ``threshold`` must be a finite float within Λ's range ``[0, 1]`` (Λ is the
+    weighted geometric mean over [0,1]). This bound is enforced: a threshold
+    below 0 or above 1 is meaningless for the advisory gate and is rejected —
+    see the non-compensatory rationale below. The domain edges are valid:
+    ``0.0`` admits every candidate (a permissive "no-gate" boundary) and
+    ``1.0`` admits only a Λ == 1 candidate.
+
     Returns a :class:`LambdaGateResult` namedtuple with fields:
         score     — Λ(x) tensor of shape (...), in [0,1]
         passed    — boolean tensor of shape (...), Λ(x) >= threshold
         threshold — the float threshold used
         advisory  — always True; a STANDING reminder that this is a
                     non-compensatory governance signal, NOT proven trust.
+
+    Non-compensatory threshold hardening: because a failing/garbage candidate
+    (a zero, NaN, or ±Inf axis) is routed to Λ = 0, a NEGATIVE threshold would
+    advisory-"pass" exactly those fully-failing candidates (0 >= t for t < 0) —
+    the opposite of a conservative admission gate. A threshold above 1 can
+    never pass. Both are misconfigurations, so the [0,1] domain is enforced up
+    front rather than silently producing a wrong pass mask.
 
     HONESTY: a "pass" is an ADVISORY signal only. Λ is the weighted-geometric-
     mean aggregator; its uniqueness is Conjecture 1 (open). Do not treat a
@@ -205,6 +219,13 @@ def lambda_gate(
     t = float(threshold)
     if t != t or t == float("inf") or t == float("-inf"):
         raise ValueError(f"threshold must be a finite float, got {threshold!r}")
+    if t < 0.0 or t > 1.0:
+        raise ValueError(
+            "threshold must be within Λ's range [0, 1] (Λ is the weighted "
+            f"geometric mean over [0,1]); got {t!r}. A threshold below 0 would "
+            "advisory-pass a fully-failing (Λ=0) candidate and one above 1 can "
+            "never pass — both signal a misconfigured gate."
+        )
     score = lambda_aggregate(axes, weights)
     passed = score >= t
     return LambdaGateResult(score=score, passed=passed, threshold=t, advisory=True)
@@ -225,7 +246,9 @@ def lambda_gate_batch(
     the per-axis scores of a single candidate, and the second-to-last dim ``N``
     enumerates the candidates (any leading dims are extra batch). Equivalent to
     calling :func:`lambda_gate` on the whole tensor — the reduction is over the
-    last dim — but named to make the agent-loop intent explicit.
+    last dim — but named to make the agent-loop intent explicit. ``threshold``
+    inherits the same [0,1] domain guard as :func:`lambda_gate` (a threshold
+    outside Λ's range is a misconfiguration and is rejected).
 
     Returns a :class:`LambdaGateResult` with:
         score     — Λ tensor of shape (..., N), one score per candidate

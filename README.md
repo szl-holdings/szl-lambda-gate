@@ -79,8 +79,8 @@ print(verdict["all_axioms_hold"], verdict["lambda_status"])
 | Function | Signature | Notes |
 |---|---|---|
 | `lambda_aggregate` | `lambda_aggregate(axes, weights=None)` | Λ over the last dim. Uniform weights when `None`. Differentiable, batched. |
-| `lambda_gate` | `lambda_gate(axes, weights=None, threshold=0.5)` | ADVISORY gate → `LambdaGateResult(score, passed, threshold, advisory)`. |
-| `lambda_gate_batch` | `lambda_gate_batch(candidates, weights=None, threshold=0.5)` | Score `(..., N, k)` candidates at once; advisory pass mask. |
+| `lambda_gate` | `lambda_gate(axes, weights=None, threshold=0.5)` | ADVISORY gate → `LambdaGateResult(score, passed, threshold, advisory)`. `threshold` must lie within Λ's range `[0,1]`. |
+| `lambda_gate_batch` | `lambda_gate_batch(candidates, weights=None, threshold=0.5)` | Score `(..., N, k)` candidates at once; advisory pass mask. Same `[0,1]` `threshold` domain guard. |
 | `yuyay_weights` | `yuyay_weights(dtype=..., device=None)` | Canonical 13-axis uniform Λ weight vector (advisory). |
 
 ### Axiom runtime self-checks (real, verifiable — NOT a uniqueness proof)
