@@ -1,0 +1,8 @@
+{
+  "repo_id": "SZLHOLDINGS/szl-governed-norm",
+  "repo_type": "kernel",
+  "observed_revision": "fe16433d44be03177167e8355c43a4bfdc63e03e",
+  "required_trust_remote_code": true,
+  "canonical_source": "szl-holdings/szl-lambda-gate",
+  "compatibility_package": "szl_lambda_gate.governed_norm"
+}

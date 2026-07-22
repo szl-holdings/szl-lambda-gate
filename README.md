@@ -176,6 +176,14 @@ return HTTP 404 as of 2026-06-30. When available, links will appear here.
 In the meantime, the kernel itself is fully functional — see [Quickstart](#quickstart).
 The broader SZL governed-AI platform: [huggingface.co/SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS).
 
+## Retained governed-norm compatibility contract
+
+The immutable loading contract for the retained
+`SZLHOLDINGS/szl-governed-norm` artifact is maintained in
+[`hf-kernels/szl-governed-norm/README.md`](hf-kernels/szl-governed-norm/README.md).
+The contract pins a real first-class Kernel Hub revision and requires explicit
+remote-code trust.
+
 ---
 
 **Explore the SZL estate:** [a11oy console](https://a-11-oy.com) · [LLM Router](https://github.com/szl-holdings/szl-router) · [Receipt format spec](https://github.com/szl-holdings/governed-receipt-spec) · [Lean proofs](https://github.com/szl-holdings/lutar-lean) · [Docs](https://github.com/szl-holdings/docs-site) · [🤗 SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS)
