@@ -34,4 +34,5 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://huggingface.co/SZLHOLDINGS/szl-lambda-gate"
-Repository = "https://huggingface.co/SZLHOLDINGS/szl-lambda-gate"
+Repository = "https://github.com/szl-holdings/szl-lambda-gate"
+"Hugging Face" = "https://huggingface.co/SZLHOLDINGS/szl-lambda-gate"
