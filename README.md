@@ -1,6 +1,10 @@
 ---
 tags:
 - kernel
+- software
+- governance
+- surrogate
+library_name: kernels
 license: apache-2.0
 ---
 
@@ -20,6 +24,24 @@ A universal (pure-PyTorch) kernel from [SZL Holdings](https://huggingface.co/SZL
 
 ---
 
+## Artifact truth card
+
+| Field | Truthful classification |
+|---|---|
+| Primary artifact | **Executable software:** a pure-PyTorch weighted-geometric-mean operator, advisory gate, runtime checks, and governed-normalization compatibility package. |
+| Hub tensor artifact | **Surrogate / compatibility artifact:** useful for packaging and inspection, but not evidence of a separately trained production model or broad learned capability. |
+| Formal status | Runtime checks exercise A1-A4 on supplied/sample inputs. Lambda uniqueness remains **Conjecture 1 (OPEN)**; this repository is not a formal verifier or closed proof. |
+| Evidence | Source, tests, self-checks, and receipt/provenance code. Any displayed output is **SAMPLE** until independently executed. |
+| Limits | No speedup, safety, trust, or deployment-readiness claim. A gate result is advisory and must be enforced by the host. |
+
+**Investor value.** This is inspectable governance substrate that makes a
+conservative aggregate and its decision boundary explicit, rather than hiding
+policy inside a model response.
+
+**Evaluator path.** Pin the reviewed Hub revision below, opt in to remote code,
+run `selfcheck()`, and inspect each returned field. A clean run is evidence for
+that revision and environment only.
+
 ## What it is
 
 `szl-lambda-gate` is a [Kernel Hub](https://huggingface.co/docs/kernels) kernel that computes:
@@ -30,7 +52,7 @@ A universal (pure-PyTorch) kernel from [SZL Holdings](https://huggingface.co/SZL
 
 the **weighted geometric mean** over the last dim of an axis-score tensor. It gives you:
 
-1. **A correctness reference you can trust.** Λ is implemented in pure PyTorch, computed via logs in float32 (float64 for float64 inputs) for numerical stability, differentiable (autograd works), and verified against a pure-Python reference in the test suite.
+1. **An auditable correctness reference.** Λ is implemented in pure PyTorch, computed via logs in float32 (float64 for float64 inputs) for numerical stability, differentiable, and compared with a pure-Python reference in the test suite.
 2. **An advisory governance gate.** `lambda_gate(axes, threshold=...)` returns a score plus a pass/fail mask (`Λ ≥ threshold`). `lambda_gate_batch` scores many candidate action-vectors in one call — the realistic per-inference-step agent usage.
 3. **The four carried axioms as runtime self-checks.** A1–A4 (monotone, homogeneous, Egyptian-exact, bounded-by-max) are exposed as honest empirical checks plus a `selfcheck()` verdict and an adversarial falsification search.
 
@@ -44,7 +66,11 @@ This is a **universal kernel**: it ships no hand-tuned CUDA/Triton binary. Its d
 import torch
 from kernels import get_kernel
 
-lg = get_kernel("SZLHOLDINGS/szl-lambda-gate")
+lg = get_kernel(
+    "SZLHOLDINGS/szl-lambda-gate",
+    revision="e33458fd0f8b85545ed352dc25495ecd00973b60",
+    trust_remote_code=True,
+)
 
 axes = torch.tensor([0.9, 0.8, 0.95])         # axis scores in [0,1]
 score = lg.lambda_aggregate(axes)             # Λ(x) ∈ [0,1]
@@ -167,14 +193,15 @@ Apache-2.0 — see [`LICENSE`](./LICENSE). Copyright 2026 SZL Holdings.
 
 ---
 
-## Interactive showcases (roadmap)
+## Presentation and current-state boundary
 
-Companion HF Spaces (`lambda-gate-holo`, `lambda-aggregator-live`, and the broader
-`szl-substrate` showcase) are on the roadmap and **not yet deployed** — all three
-return HTTP 404 as of 2026-06-30. When available, links will appear here.
+- [Hugging Face artifact](https://huggingface.co/SZLHOLDINGS/szl-lambda-gate)
+- [Canonical GitHub source](https://github.com/szl-holdings/szl-lambda-gate)
+- [SZL organization inventory](https://huggingface.co/SZLHOLDINGS)
 
-In the meantime, the kernel itself is fully functional — see [Quickstart](#quickstart).
-The broader SZL governed-AI platform: [huggingface.co/SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS).
+These are navigation links, not runtime or green-status claims. The quickstart
+pins the Hub revision observed during this audit; independently verify the
+revision before advancing it. No companion Space availability is asserted here.
 
 ## Retained governed-norm compatibility contract
 
