@@ -30,3 +30,10 @@ def test_contract_points_to_the_active_successor_package():
 
     assert contract["canonical_source"] == "szl-holdings/szl-lambda-gate"
     assert contract["compatibility_package"] == "szl_lambda_gate.governed_norm"
+
+
+def test_contract_declares_kernel_hub_license_metadata():
+    contract = _contract()
+
+    assert contract["repo_type"] == "kernel"
+    assert contract["license"] == "apache-2.0"
