@@ -14,11 +14,29 @@ Run: python -m pytest tests/ -q   (CPU-only; runs anywhere.)
 """
 import math
 import random
+import shutil
 import sys
 from pathlib import Path
 
 import pytest
 import torch
+
+
+def _inductor_cpp_compiler_available() -> bool:
+    """Host C++ compiler torch inductor needs. Missing cl.exe is an unsupported Windows matrix."""
+    if sys.platform.startswith("win"):
+        return shutil.which("cl") is not None
+    return any(shutil.which(name) for name in ("g++", "clang++", "c++", "gcc"))
+
+
+requires_inductor_compiler = pytest.mark.skipif(
+    not _inductor_cpp_compiler_available(),
+    reason=(
+        "BLOCKED: torch inductor C++ compiler not found (Windows: cl.exe). "
+        "test_torch_compile_friendly / test_fullgraph_lambda_aggregate / "
+        "test_fullgraph_lambda_gate_score / test_fullgraph_lambda_gate_batch_score"
+    ),
+)
 
 # Prefer the built Hub artifact when present. Fall back to torch-ext source
 # so GitHub CI and a checkout without build/ load the same package.
@@ -266,6 +284,7 @@ def test_provenance_and_honesty_metadata():
     assert "NOT proven trust" in lg.DOCTRINE_FOOTER
 
 
+@requires_inductor_compiler
 def test_torch_compile_friendly():
     """Λ traces/compiles without graph breaks blowing up (smoke test)."""
     fn = torch.compile(lambda z: lg.lambda_aggregate(z), fullgraph=False)
@@ -412,18 +431,21 @@ def test_all_dtypes_finite_and_close():
 # --------------------------------------------------------------------------- #
 # torch.compile FULLGRAPH on lambda_aggregate AND lambda_gate (+ batch)        #
 # --------------------------------------------------------------------------- #
+@requires_inductor_compiler
 def test_fullgraph_lambda_aggregate():
     fn = torch.compile(lambda z: lg.lambda_aggregate(z), fullgraph=True)
     x = torch.rand(8, 4, dtype=torch.float32)
     assert torch.allclose(fn(x), lg.lambda_aggregate(x), atol=1e-6)
 
 
+@requires_inductor_compiler
 def test_fullgraph_lambda_gate_score():
     fn = torch.compile(lambda z: lg.lambda_gate(z, threshold=0.5).score, fullgraph=True)
     x = torch.rand(8, 4, dtype=torch.float32)
     assert torch.allclose(fn(x), lg.lambda_aggregate(x), atol=1e-6)
 
 
+@requires_inductor_compiler
 def test_fullgraph_lambda_gate_batch_score():
     fn = torch.compile(lambda z: lg.lambda_gate_batch(z, threshold=0.5).score, fullgraph=True)
     C = torch.rand(5, 3, 4, dtype=torch.float32)

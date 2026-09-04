@@ -34,6 +34,22 @@ A universal (pure-PyTorch) kernel from [SZL Holdings](https://huggingface.co/SZL
 | Evidence | Source, tests, self-checks, and receipt/provenance code. Any displayed output is **SAMPLE** until independently executed. |
 | Limits | No speedup, safety, trust, or deployment-readiness claim. A gate result is advisory and must be enforced by the host. |
 
+## BLOCKED — Windows inductor matrix (C3)
+
+GitHub Actions declared matrix (`ubuntu-latest`, Python 3.10/3.11/3.12) is green.
+This host without MSVC `cl.exe` cannot run torch inductor. Tests stay in the
+suite and skip when the compiler is absent; they are not deleted.
+
+Failing/unsupported tests on Windows without `cl.exe`:
+
+- `tests/test_lambda.py::test_torch_compile_friendly`
+- `tests/test_lambda.py::test_fullgraph_lambda_aggregate`
+- `tests/test_lambda.py::test_fullgraph_lambda_gate_score`
+- `tests/test_lambda.py::test_fullgraph_lambda_gate_batch_score`
+
+Measured error: `torch._inductor.exc.InductorError: RuntimeError: Compiler: cl is not found.`
+No acceleration or GPU story is claimed from this matrix.
+
 **Investor value.** This is inspectable governance substrate that makes a
 conservative aggregate and its decision boundary explicit, rather than hiding
 policy inside a model response.
