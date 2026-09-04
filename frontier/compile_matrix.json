@@ -1,0 +1,24 @@
+{
+  "schema": "szl.kernel-compile-matrix/v1",
+  "hub_id": "SZLHOLDINGS/szl-lambda-gate",
+  "source_repository": "szl-holdings/szl-lambda-gate",
+  "acceleration_claim": false,
+  "hub_write": "DENIED_IN_THIS_CHANGE",
+  "surfaces": [
+    {
+      "id": "cpu-eager",
+      "status": "SUPPORTED",
+      "evidence": "GitHub ci.yml on main completed success 2026-08-31 (run 33391268610)."
+    },
+    {
+      "id": "torch.compile-fullgraph",
+      "status": "UNSUPPORTED_UNTIL_REPUBLISH",
+      "evidence": "Seed payload SZL-HF-FRONTIER-2026-08-29 recorded four published fullgraph failures on the Hub card. GitHub source CI is not a Hub republish."
+    },
+    {
+      "id": "cuda-performance",
+      "status": "UNSUPPORTED",
+      "evidence": "Universal kernel. No production-CUDA claim."
+    }
+  ]
+}
