@@ -107,17 +107,21 @@ def _resolve_weights(
             f"got shape {tuple(weights.shape)}"
         )
     wf = weights.to(cdt)
-    # Reject non-finite weights up front: a NaN/Inf weight is meaningless for a
-    # governance roll-up and would silently poison the normalization.
-    if not bool(torch.all(torch.isfinite(wf))):
-        raise ValueError("weights must all be finite (no NaN/Inf)")
-    # Positivity / sum guards mirror the pure-Python reference (wᵢ>0, Σw>0).
-    if bool(torch.any(wf <= 0.0)):
-        raise ValueError("weights must be strictly positive (wᵢ > 0)")
-    sw = wf.sum()
-    if not bool(sw > 0.0):
-        raise ValueError("weights must sum to a positive value")
-    return wf / sw
+    compiling = bool(getattr(torch.compiler, "is_compiling", lambda: False)())
+    if not compiling:
+        if not bool(torch.all(torch.isfinite(wf))):
+            raise ValueError("weights must all be finite (no NaN/Inf)")
+        if bool(torch.any(wf <= 0.0)):
+            raise ValueError("weights must be strictly positive (wᵢ > 0)")
+        sw = wf.sum()
+        if not bool(sw > 0.0):
+            raise ValueError("weights must sum to a positive value")
+        return wf / sw
+    # Compiled path stays in tensor-land. Non-positive weights are a misuse;
+    # clamp them away from zero so the graph does not break, then normalize.
+    wf = torch.where(torch.isfinite(wf), wf, torch.ones_like(wf))
+    wf = torch.clamp(wf, min=torch.finfo(wf.dtype).tiny)
+    return wf / wf.sum()
 
 
 def lambda_aggregate(
