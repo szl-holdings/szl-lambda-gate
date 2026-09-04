@@ -20,9 +20,15 @@ from pathlib import Path
 import pytest
 import torch
 
-# Import the BUILT universal kernel package directly (the artifact get_kernel
-# would load), exactly like the sibling kernel's tests do.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build" / "torch-universal"))
+# Prefer the built Hub artifact when present. Fall back to torch-ext source
+# so GitHub CI and a checkout without build/ load the same package.
+_ROOT = Path(__file__).resolve().parents[1]
+for _candidate in (_ROOT / "build" / "torch-universal", _ROOT / "torch-ext"):
+    if (_candidate / "szl_lambda_gate").is_dir():
+        sys.path.insert(0, str(_candidate))
+        break
+else:
+    raise ImportError("szl_lambda_gate missing from build/torch-universal and torch-ext")
 import szl_lambda_gate as lg  # noqa: E402
 
 # Import the canonical pure-Python reference for cross-checks.
