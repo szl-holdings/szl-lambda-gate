@@ -1,0 +1,13 @@
+{
+  "title": "szl-lambda-gate — Λ (Lambda-Spine) aggregator universal kernel",
+  "upload_type": "software",
+  "description": "Weighted geometric mean over axis scores in [0,1] with an ADVISORY governance gate and A1–A4 axiom self-checks. Λ = Conjecture 1 (advisory, uniqueness open) — NOT proven trust. Mirrors HF SZLHOLDINGS/szl-lambda-gate.",
+  "creators": [{"name": "Lutar, Stephen P., Jr."}],
+  "license": {"id": "Apache-2.0"},
+  "keywords": ["governed-ai", "lambda-gate", "aggregator", "kernel", "szl-holdings"],
+  "related_identifiers": [
+    {"identifier": "10.5281/zenodo.19944926", "relation": "isSupplementTo", "scheme": "doi"},
+    {"identifier": "https://huggingface.co/SZLHOLDINGS/szl-lambda-gate", "relation": "isDocumentedBy", "scheme": "url"}
+  ],
+  "notes": "NEW work per the szl-papers deposit policy. Mint via GitHub release after enabling this repo in the owner's Zenodo account."
+}
