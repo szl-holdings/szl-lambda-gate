@@ -4,6 +4,7 @@
     {
       "slug": "lambda-gate",
       "hf_repo_id": "SZLHOLDINGS/szl-lambda-gate",
+      "oidc_resource": "SZLHOLDINGS/szl-lambda-gate",
       "repo_type": "model",
       "subdirectory": ".",
       "card_template": "",

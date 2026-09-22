@@ -10,9 +10,14 @@ name: hf-mirror
 # cards) would be stripped. Set "mirror_on_push": false on those targets.
 # Lane B is additive - hf upload never deletes remote files the payload lacks.
 #
+# AUTH: keyless via Trusted Publishers. huggingface_hub exchanges GitHub OIDC
+# for a short-lived Hub token only when HF_OIDC_RESOURCE is set. For model
+# repos that value is namespace/name (the hf_repo_id). Spaces/datasets/kernels
+# use the prefixed form (spaces/ns/name, datasets/ns/name, kernels/ns/name).
+# Declare it on the target as oidc_resource. Fail closed if empty.
+# Falls back to secrets.HF_TOKEN. Fail closed if neither is available.
+#
 # Targets are declared in .github/hf-mirror.json.
-# AUTH: keyless via Trusted Publishers (GitHub OIDC -> short-lived Hub token),
-# falling back to secrets.HF_TOKEN. Fail closed if neither is available.
 
 on:
   push:
@@ -52,6 +57,11 @@ jobs:
           targets=$(jq -c --arg only "$only" \
             '[ .targets[] | select($only == "" or .hf_repo_id == $only) ]' .github/hf-mirror.json)
           [ "$(jq 'length' <<<"$targets")" -gt 0 ] || { echo "::error::no targets matched"; exit 1; }
+          missing=$(jq -r '.[] | select((.oidc_resource // "") == "") | .hf_repo_id' <<<"$targets")
+          if [ -n "$missing" ]; then
+            echo "::error::UNAVAILABLE - oidc_resource missing for: $missing"
+            exit 1
+          fi
           push_targets=$(jq -c '[ .[] | select(.mirror_on_push != false) ]' <<<"$targets")
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
           echo "push_targets=$push_targets" >> "$GITHUB_OUTPUT"
@@ -87,6 +97,7 @@ jobs:
       HF_REPO_ID: ${{ matrix.target.hf_repo_id }}
       HF_REPO_TYPE: ${{ matrix.target.repo_type }}
       SUBDIR: ${{ matrix.target.subdirectory }}
+      HF_OIDC_RESOURCE: ${{ matrix.target.oidc_resource }}
       HF_XET_HIGH_PERFORMANCE: '1'
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
@@ -104,6 +115,11 @@ jobs:
       - name: Resolve Hub credential
         run: |
           set -euo pipefail
+          if [ -z "${HF_OIDC_RESOURCE:-}" ]; then
+            echo "::error::UNAVAILABLE - HF_OIDC_RESOURCE empty for $HF_REPO_ID"
+            exit 1
+          fi
+          echo "oidc_resource=$HF_OIDC_RESOURCE"
           if hf auth whoami >/dev/null 2>&1; then
             echo "auth=oidc" >> "$GITHUB_ENV"
           elif [ -n "${{ secrets.HF_TOKEN }}" ]; then
@@ -185,6 +201,7 @@ jobs:
               "github_tag": tag,
               "hf_repo_id": repo,
               "hf_repo_type": rt,
+              "hf_oidc_resource": os.environ.get("HF_OIDC_RESOURCE"),
               "hf_revision": tags.get(tag),
               "file_count": len(files),
               "auth": os.environ.get("auth", "UNKNOWN"),
