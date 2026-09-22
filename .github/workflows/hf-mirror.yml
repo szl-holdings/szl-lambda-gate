@@ -1,0 +1,194 @@
+name: hf-mirror
+
+# SZL Holdings - GitHub -> Hugging Face mirror, one workflow, two lanes.
+#
+#   lane A (continuous): push to main -> huggingface/hub-sync per target subfolder
+#   lane B (versioned):  release published -> hf upload + HfApi.create_tag
+#
+# Targets are declared in .github/hf-mirror.json.
+# AUTH: keyless via Trusted Publishers (GitHub OIDC -> short-lived Hub token),
+# falling back to secrets.HF_TOKEN. Fail closed if neither is available.
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to (re)mirror
+        required: false
+      only:
+        description: Limit to a single hf_repo_id
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: hf-mirror-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.load.outputs.targets }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+      - id: load
+        run: |
+          set -euo pipefail
+          test -f .github/hf-mirror.json || { echo "::error::.github/hf-mirror.json missing"; exit 1; }
+          only='${{ inputs.only }}'
+          targets=$(jq -c --arg only "$only" \
+            '[ .targets[] | select($only == "" or .hf_repo_id == $only) ]' .github/hf-mirror.json)
+          [ "$(jq 'length' <<<"$targets")" -gt 0 ] || { echo "::error::no targets matched"; exit 1; }
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  sync:
+    needs: plan
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.plan.outputs.targets) }}
+    steps:
+      - uses: huggingface/hub-sync@fdffea8e04104d0bd4e3181c5feb3025f0433ff5  # v0.3.0
+        with:
+          github_repo_id: ${{ github.repository }}
+          huggingface_repo_id: ${{ matrix.target.hf_repo_id }}
+          repo_type: ${{ matrix.target.repo_type }}
+          subdirectory: ${{ matrix.target.subdirectory }}
+          hf_token: ${{ secrets.HF_TOKEN }}
+
+  release-mirror:
+    needs: plan
+    if: github.event_name == 'release' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.plan.outputs.targets) }}
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      HF_REPO_ID: ${{ matrix.target.hf_repo_id }}
+      HF_REPO_TYPE: ${{ matrix.target.repo_type }}
+      SUBDIR: ${{ matrix.target.subdirectory }}
+      HF_XET_HIGH_PERFORMANCE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          fetch-depth: 0
+          lfs: true
+
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c  # v6.0.0
+        with:
+          python-version: '3.12'
+
+      - run: python -m pip install --upgrade "huggingface_hub[cli,hf_xet]>=1.19.0" pyyaml
+
+      - name: Resolve Hub credential
+        run: |
+          set -euo pipefail
+          if hf auth whoami >/dev/null 2>&1; then
+            echo "auth=oidc" >> "$GITHUB_ENV"
+          elif [ -n "${{ secrets.HF_TOKEN }}" ]; then
+            echo "HF_TOKEN=${{ secrets.HF_TOKEN }}" >> "$GITHUB_ENV"
+            echo "auth=pat" >> "$GITHUB_ENV"
+          else
+            echo "::error::UNAVAILABLE - no OIDC trust and no HF_TOKEN for $HF_REPO_ID"; exit 1
+          fi
+
+      - name: Stage payload
+        run: |
+          set -euo pipefail
+          rm -rf .hfstage && mkdir -p .hfstage
+          rsync -a --delete \
+            --exclude '.git' --exclude '.github' --exclude '.hfstage' \
+            --exclude 'tests' --exclude '__pycache__' \
+            "${SUBDIR:-.}/" .hfstage/
+          cp -f LICENSE .hfstage/LICENSE 2>/dev/null || true
+
+      - name: Attach release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --dir .hfstage --clobber || echo "::notice::no release assets"
+          if grep -rIl 'version https://git-lfs.github.com/spec/v1' .hfstage >/dev/null 2>&1; then
+            echo "::error::UNAVAILABLE - unresolved Git LFS pointers in payload"; exit 1
+          fi
+
+      - name: Render and validate model card
+        env:
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          CARD_TEMPLATE: ${{ matrix.target.card_template }}
+        run: python scripts/render_model_card.py
+
+      - name: Upload to the Hub
+        run: |
+          set -euo pipefail
+          hf upload "$HF_REPO_ID" .hfstage . \
+            --repo-type "$HF_REPO_TYPE" \
+            --commit-message "mirror ${RELEASE_TAG} from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+
+      - name: Bind GitHub tag to a Hub revision
+        env:
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+          from huggingface_hub.utils import HfHubHTTPError
+          api = HfApi()
+          repo, rt = os.environ["HF_REPO_ID"], os.environ["HF_REPO_TYPE"]
+          tag = os.environ["RELEASE_TAG"]
+          notes = (os.environ.get("RELEASE_BODY") or f"Mirror of {os.environ['GITHUB_REPOSITORY']} {tag}")[:4000]
+          try:
+              api.delete_tag(repo, tag=tag, repo_type=rt)
+          except HfHubHTTPError:
+              pass
+          api.create_tag(repo, tag=tag, tag_message=notes, repo_type=rt, exist_ok=True)
+          PY
+
+      - name: Verify from the Hub and emit receipt
+        run: |
+          python - <<'PY'
+          import json, os
+          from huggingface_hub import HfApi
+          api = HfApi()
+          repo, rt, tag = os.environ["HF_REPO_ID"], os.environ["HF_REPO_TYPE"], os.environ["RELEASE_TAG"]
+          refs = api.list_repo_refs(repo, repo_type=rt)
+          tags = {t.name: t.target_commit for t in refs.tags}
+          files = api.list_repo_files(repo, repo_type=rt, revision=tag)
+          state = "MEASURED" if tag in tags and "README.md" in files else "UNAVAILABLE"
+          receipt = {
+              "state": state,
+              "github_repo": os.environ["GITHUB_REPOSITORY"],
+              "github_sha": os.environ["GITHUB_SHA"],
+              "github_tag": tag,
+              "hf_repo_id": repo,
+              "hf_repo_type": rt,
+              "hf_revision": tags.get(tag),
+              "file_count": len(files),
+              "auth": os.environ.get("auth", "UNKNOWN"),
+          }
+          with open("hf-mirror-receipt.json", "w") as fh:
+              json.dump(receipt, fh, indent=2, sort_keys=True)
+          print(json.dumps(receipt, indent=2))
+          if state != "MEASURED":
+              raise SystemExit("fail closed: mirror not verifiable on the Hub")
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        if: always()
+        with:
+          name: hf-mirror-receipt-${{ matrix.target.slug }}-${{ env.RELEASE_TAG }}
+          path: hf-mirror-receipt.json
