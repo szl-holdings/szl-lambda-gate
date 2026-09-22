@@ -6,7 +6,23 @@
       "hf_repo_id": "SZLHOLDINGS/szl-lambda-gate",
       "repo_type": "model",
       "subdirectory": ".",
-      "card_template": "docs/card_body.md"
+      "card_template": "",
+      "mirror_on_push": false,
+      "$why_no_push_lane": "hub-sync propagates deletions. This Hub repo holds artifacts that do not exist in the GitHub tree, including the build/torch-universal package that makes get_kernel import-LIVE. Mirroring is release-only and additive; the card is loaded from the Hub so its curated front matter survives.",
+      "hub_only_paths": [
+        "build/",
+        "bom/",
+        "scripts/",
+        "BENCH.laptop-blackwell.json",
+        "OPERATIONAL.json",
+        "PROMOTION_READINESS_AUDIT.json",
+        "MODEL_PROVENANCE.json",
+        "TRAINING_RECEIPT.json",
+        "SZL_ESTATE_MANAGED.json",
+        "build.toml",
+        "doctrine.py",
+        "lambda_gate.py"
+      ]
     }
   ]
 }
