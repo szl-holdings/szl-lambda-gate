@@ -1,0 +1,12 @@
+{
+  "$comment": "SZL Holdings GitHub -> Hugging Face mirror map. Consumed by .github/workflows/hf-mirror.yml. Org casing is literal: SZLHOLDINGS.",
+  "targets": [
+    {
+      "slug": "lambda-gate",
+      "hf_repo_id": "SZLHOLDINGS/szl-lambda-gate",
+      "repo_type": "model",
+      "subdirectory": ".",
+      "card_template": "docs/card_body.md"
+    }
+  ]
+}
