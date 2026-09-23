@@ -22,4 +22,4 @@ def test_release_mirror_keeps_fail_closed_fallback_boundary() -> None:
     assert "HF_FALLBACK_TOKEN: ${{ secrets.HF_TOKEN }}" in text
     assert "trusted-publisher exchange failed and no HF_TOKEN" in text
     assert 'echo "::add-mask::$HF_FALLBACK_TOKEN"' in text
-    assert "mirror_on_push": false if False else True
+    assert 'printf \'HF_TOKEN=%s\\n\' "$HF_FALLBACK_TOKEN" >> "$GITHUB_ENV"' in text
