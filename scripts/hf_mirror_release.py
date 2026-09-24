@@ -15,9 +15,6 @@ import re
 import shutil
 import sys
 
-from huggingface_hub import HfApi, ModelCard, hf_hub_download
-
-
 STAGE = Path(".hfstage")
 BASELINE_DIR = Path(".hfmirror-baseline")
 BASELINE_FILE = BASELINE_DIR / "evidence.json"
@@ -111,6 +108,8 @@ def assets() -> None:
 
 
 def hub_file(repo: str, repo_type: str, revision: str, name: str, token: str) -> Path:
+    from huggingface_hub import hf_hub_download
+
     return Path(hf_hub_download(repo, name, repo_type=repo_type, revision=revision, token=token))
 
 
@@ -124,6 +123,8 @@ def assert_metadata(card: ModelCard, item: dict) -> dict:
 
 
 def preflight() -> None:
+    from huggingface_hub import HfApi, ModelCard
+
     item = target()
     require(item.get("preserve_hub_card") is True, "curated Hub card policy is required")
     require(os.environ["HF_REPO_TYPE"] == "model", "model-card verification supports model repositories only")
@@ -163,6 +164,8 @@ def without_release_block(body: str) -> str:
 
 def verify_revision(api: HfApi, item: dict, revision: str, expected_sha: str,
                     expected_files: set[str], expected_hashes: dict[str, str], token: str) -> None:
+    from huggingface_hub import ModelCard
+
     repo, repo_type = os.environ["HF_REPO_ID"], os.environ["HF_REPO_TYPE"]
     info = api.repo_info(repo, repo_type=repo_type, revision=revision)
     require(info.sha == expected_sha, f"Hub {revision} resolves to unexpected commit")
@@ -179,6 +182,8 @@ def verify_revision(api: HfApi, item: dict, revision: str, expected_sha: str,
 
 
 def publish() -> None:
+    from huggingface_hub import HfApi, ModelCard
+
     item = target()
     base = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
     staged = stage_files()

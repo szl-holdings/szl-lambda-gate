@@ -1,12 +1,15 @@
 import json
+import importlib.util
 from pathlib import Path
 
 import pytest
 
-from scripts import hf_mirror_release as mirror
-
-
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "hf-mirror.yml"
+PUBLISHER = WORKFLOW.parents[2] / "scripts" / "hf_mirror_release.py"
+spec = importlib.util.spec_from_file_location("hf_mirror_release", PUBLISHER)
+assert spec and spec.loader
+mirror = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mirror)
 
 
 def test_release_mirror_explicitly_exchanges_oidc_token() -> None:
