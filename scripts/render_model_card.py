@@ -2,9 +2,9 @@
 """Render .hfstage/README.md for the Hugging Face mirror.
 
 Card source precedence:
-  1. local template (CARD_TEMPLATE), when the repo wants GitHub to own the card
-  2. the LIVE Hub card (ModelCard.load), so a hand-curated Hub card is preserved
-  3. the staged README from the payload
+  1. captured Hub baseline (HUB_CARD_PATH) for curated cards
+  2. local template (CARD_TEMPLATE), when the repo wants GitHub to own the card
+  3. the live Hub card, or staged README only when preservation is not required
 
 Front matter from the chosen source is preserved as-is. Nothing is defaulted
 except `license`, which the Hub requires. The release section is written between
@@ -15,6 +15,7 @@ import os
 import pathlib
 import re
 import sys
+import json
 
 import yaml
 from huggingface_hub import ModelCard, ModelCardData
@@ -28,9 +29,14 @@ repo_id = os.environ["HF_REPO_ID"]
 repo_type = os.environ.get("HF_REPO_TYPE", "model")
 tag = os.environ.get("RELEASE_TAG", "untagged")
 gh_repo = os.environ.get("GITHUB_REPOSITORY", "szl-holdings/unknown")
-gh_sha = os.environ.get("GITHUB_SHA", "")
-notes = (os.environ.get("RELEASE_BODY") or "").strip()
-release_url = os.environ.get("RELEASE_URL") or f"https://github.com/{gh_repo}/releases/tag/{tag}"
+gh_sha = os.environ.get("SOURCE_GITHUB_SHA", "")
+if not re.fullmatch(r"[0-9a-f]{40}", gh_sha):
+    sys.exit("FAIL: SOURCE_GITHUB_SHA must be the verified release tag commit")
+release = json.loads(pathlib.Path(".hfmirror-release.json").read_text(encoding="utf-8"))
+if release.get("tagName") != tag or release.get("isDraft"):
+    sys.exit("FAIL: published GitHub release/tag mismatch")
+notes = (release.get("body") or "").strip()
+release_url = release.get("url") or f"https://github.com/{gh_repo}/releases/tag/{tag}"
 
 
 def split_front(raw):
@@ -42,11 +48,22 @@ def split_front(raw):
 
 front, body, origin = {}, "", None
 
+preserve = os.environ.get("PRESERVE_HUB_CARD", "").lower() == "true"
+baseline_env = os.environ.get("HUB_CARD_PATH") or ""
+baseline = pathlib.Path(baseline_env) if baseline_env else None
 tpl_env = os.environ.get("CARD_TEMPLATE") or ""
 tpl = pathlib.Path(tpl_env) if tpl_env else None
 staged = STAGE / "README.md"
 
-if tpl and tpl.is_file():
+if preserve and (baseline is None or not baseline.is_file()):
+    sys.exit("FAIL: preserved Hub card baseline is missing")
+
+if baseline and baseline.is_file():
+    hub_card = ModelCard.load(baseline)
+    front = dict(hub_card.data.to_dict())
+    body = hub_card.text
+    origin = f"baseline:{baseline}"
+elif tpl and tpl.is_file():
     front, body = split_front(tpl.read_text(encoding="utf-8"))
     origin = f"template:{tpl}"
 else:
@@ -56,6 +73,8 @@ else:
         body = hub_card.text
         origin = f"hub:{repo_id}"
     except (HfHubHTTPError, OSError, ValueError) as exc:
+        if preserve:
+            sys.exit(f"FAIL: curated Hub card unavailable ({exc.__class__.__name__})")
         print(f"::notice::could not load Hub card ({exc.__class__.__name__}); falling back to payload")
         if staged.is_file():
             front, body = split_front(staged.read_text(encoding="utf-8"))
@@ -92,11 +111,9 @@ if BEGIN in body and END in body:
 else:
     body = body.rstrip() + "\n\n" + block + "\n"
 
-card = ModelCard.from_template(
-    card_data=ModelCardData(**front),
-    model_id=repo_id,
-    template_str="---\n{{ card_data }}\n---\n" + body,
-)
+# Hub card text and release notes are untrusted Markdown. Do not evaluate them
+# as a Jinja template in the credentialed release job.
+card = ModelCard("---\n" + str(ModelCardData(**front)).rstrip() + "\n---\n" + body)
 STAGE.mkdir(parents=True, exist_ok=True)
 card.save(staged)
 print(f"rendered {staged} from {origin} | license={front['license']} | library_name={front.get('library_name', 'UNSET')}")
