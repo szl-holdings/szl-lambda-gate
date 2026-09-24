@@ -9,6 +9,13 @@
       "subdirectory": ".",
       "card_template": "",
       "mirror_on_push": false,
+      "preserve_hub_card": true,
+      "required_card_metadata": {
+        "library_name": "kernels",
+        "license": "apache-2.0"
+      },
+      "required_card_tags": ["doi:10.5281/zenodo.19944926"],
+      "preserve_hub_paths": [".gitattributes", "LICENSE"],
       "$why_no_push_lane": "hub-sync propagates deletions. This Hub repo holds artifacts that do not exist in the GitHub tree, including the build/torch-universal package that makes get_kernel import-LIVE. Mirroring is release-only and additive; the card is loaded from the Hub so its curated front matter survives.",
       "hub_only_paths": [
         "build/",
