@@ -34,8 +34,11 @@ def test_release_mirror_requires_branch_bound_oidc() -> None:
     assert "trusted-publisher exchange failed" in text
     assert "default: oidc" in text
     assert "options: [oidc, pat]" in text
-    assert 'if [ "$AUTH_MODE" = "pat" ]; then' in text
-    assert "HF_FALLBACK_TOKEN: ${{ inputs.auth == 'pat' && secrets.HF_TOKEN || '' }}" in text
+    assert "if: inputs.auth == 'pat'" in text
+    assert "if: inputs.auth == 'oidc'" in text
+    assert "HF_FALLBACK_TOKEN: ${{ secrets.HF_TOKEN }}" in text
+    assert "inputs.auth == 'pat' && secrets.HF_TOKEN" not in text
+    assert 'case "$AUTH_MODE" in' in text
     assert "auth_check(repo_id=repo" in text
     assert "write=True" in text
     assert 'echo "HF_AUTH_MODE=pat" >> "$GITHUB_ENV"' in text
