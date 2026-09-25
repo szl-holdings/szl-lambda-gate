@@ -113,6 +113,30 @@ def hub_file(repo: str, repo_type: str, revision: str, name: str, token: str) ->
     return Path(hf_hub_download(repo, name, repo_type=repo_type, revision=revision, token=token))
 
 
+def collision_plan(staged_hashes: dict[str, str], hub_hashes: dict[str, str], item: dict) -> dict[str, dict[str, str]]:
+    """Classify staged/Hub overlaps and return the reviewed replacements.
+
+    README.md is rendered from the Hub card and verified separately. Every other
+    overlap must be byte-identical unless the target lists the exact path in
+    replace_hub_paths (GitHub-owned source a release may update). An absent or
+    empty list keeps the strict additive-only rule unchanged.
+    """
+    replace = list(item.get("replace_hub_paths", []))
+    preserve = set(item.get("preserve_hub_paths", []))
+    require(len(set(replace)) == len(replace), "duplicate replace_hub_paths entry")
+    for name in replace:
+        safe_relative(name)
+        require(name != "README.md", "README.md is rendered, never replaced")
+        require(name not in preserve, f"path is both preserved and replaceable: {name}")
+    replacements: dict[str, dict[str, str]] = {}
+    for name, digest in sorted(staged_hashes.items()):
+        if name == "README.md" or name not in hub_hashes or hub_hashes[name] == digest:
+            continue
+        require(name in replace, f"source/Hub collision differs: {name}")
+        replacements[name] = {"hub_before": hub_hashes[name], "source": digest}
+    return replacements
+
+
 def assert_metadata(card: ModelCard, item: dict) -> dict:
     metadata = dict(card.data.to_dict())
     for key, value in item.get("required_card_metadata", {}).items():
@@ -142,16 +166,17 @@ def preflight() -> None:
         require(name in files and name not in staged, f"Hub preservation path unavailable or staged: {name}")
 
     hashes = {name: sha256(hub_file(repo, repo_type, info.sha, name, token)) for name in sorted(files)}
-    for name, path in staged.items():
-        if name in hashes and name != "README.md":
-            require(sha256(path) == hashes[name], f"source/Hub collision differs: {name}")
+    replacements = collision_plan({name: sha256(path) for name, path in staged.items()}, hashes, item)
+    for name, change in replacements.items():
+        print(f"reviewed replacement {name}: hub {change['hub_before']} -> source {change['source']}")
 
     card_bytes = hub_file(repo, repo_type, info.sha, "README.md", token).read_bytes()
     BASELINE_DIR.mkdir(exist_ok=True)
     (BASELINE_DIR / "README.md").write_bytes(card_bytes)
     card = ModelCard.load(BASELINE_DIR / "README.md")
     metadata = assert_metadata(card, item)
-    evidence = {"sha": info.sha, "files": sorted(files), "hashes": hashes, "card_metadata": metadata}
+    evidence = {"sha": info.sha, "files": sorted(files), "hashes": hashes, "card_metadata": metadata,
+                "replacements": replacements}
     BASELINE_FILE.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"Hub baseline {info.sha}: {len(files)} files; curated metadata and collisions verified")
 
@@ -255,6 +280,7 @@ def publish() -> None:
         "verified_file_count": len(expected_hashes),
         "release_assets": sorted(asset["name"] for asset in release()["assets"]),
         "preserved_hub_files": len(set(base["files"]) - set(staged)),
+        "replaced_hub_files": sorted(base.get("replacements", {})),
         "auth": auth,
     }
     RECEIPT_FILE.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")

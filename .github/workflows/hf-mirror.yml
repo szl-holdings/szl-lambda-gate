@@ -1,16 +1,23 @@
 name: hf-mirror
 
-# SZL Holdings - GitHub -> Hugging Face mirror, one workflow, two lanes.
+# SZL Holdings - GitHub -> Hugging Face mirror, release lane only.
 #
-#   lane A (continuous): push to main -> huggingface/hub-sync, OPT-IN per target
-#   lane B (versioned):  release published -> hf upload + HfApi.create_tag
+#   release published -> dispatch on main -> hf upload + HfApi.create_tag
+#   push to main      -> plan only (validates .github/hf-mirror.json; no Hub access)
 #
-# Lane A is opt-in because hub-sync propagates deletions: a Hub repo that holds
-# artifacts absent from the GitHub tree (Kernel Hub builds, receipts, curated
-# cards) would be stripped. Set "mirror_on_push": false on those targets.
-# Lane B uploads additively and verifies retained Hub files byte for byte.
+# The former push lane (huggingface/hub-sync) is removed: hub-sync propagates
+# deletions, and a Hub repo that holds artifacts absent from the GitHub tree
+# (Kernel Hub builds, receipts, curated cards) would be stripped. The plan job
+# fails closed if any target sets "mirror_on_push" to anything but false.
+# The release lane uploads additively and verifies retained Hub files byte for
+# byte. A staged file that differs from its Hub copy fails closed unless the
+# target lists its exact path in replace_hub_paths.
 # A published release dispatches the publisher on main so a branch-bound
 # Trusted Publisher can attest the workflow identity.
+#
+# The resolved Hub token reaches later steps through GITHUB_ENV. Steps that do
+# not call the Hub blank it with a step-level `HF_TOKEN: ''`; the runner merges
+# step env over GITHUB_ENV values (actions/runner StepsRunner.cs).
 #
 # AUTH: Trusted Publishers are the default. huggingface_hub exchanges GitHub
 # OIDC for a short-lived Hub token only when HF_OIDC_RESOURCE is set. For model
@@ -80,7 +87,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       targets: ${{ steps.load.outputs.targets }}
-      push_targets: ${{ steps.load.outputs.push_targets }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -91,6 +97,12 @@ jobs:
         run: |
           set -euo pipefail
           test -f .github/hf-mirror.json || { echo "::error::.github/hf-mirror.json missing"; exit 1; }
+          destructive=$(jq -r '.targets[] | select(has("mirror_on_push") and .mirror_on_push != false)
+            | (.hf_repo_id // "unnamed target")' .github/hf-mirror.json)
+          if [ -n "$destructive" ]; then
+            echo "::error::UNAVAILABLE - destructive lane removed; mirror_on_push must be false or absent for: $destructive"
+            exit 1
+          fi
           targets=$(jq -c --arg only "$ONLY" \
             '[ .targets[] | select($only == "" or .hf_repo_id == $only) ]' .github/hf-mirror.json)
           [ "$(jq 'length' <<<"$targets")" -gt 0 ] || { echo "::error::no targets matched"; exit 1; }
@@ -99,27 +111,8 @@ jobs:
             echo "::error::UNAVAILABLE - oidc_resource missing for: $missing"
             exit 1
           fi
-          push_targets=$(jq -c '[ .[] | select(.mirror_on_push != false) ]' <<<"$targets")
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
-          echo "push_targets=$push_targets" >> "$GITHUB_OUTPUT"
-          echo "lane A targets: $(jq 'length' <<<"$push_targets") of $(jq 'length' <<<"$targets")"
-
-  sync:
-    needs: plan
-    if: github.event_name == 'push' && needs.plan.outputs.push_targets != '[]'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJson(needs.plan.outputs.push_targets) }}
-    steps:
-      - uses: huggingface/hub-sync@fdffea8e04104d0bd4e3181c5feb3025f0433ff5  # v0.3.0
-        with:
-          github_repo_id: ${{ github.repository }}
-          huggingface_repo_id: ${{ matrix.target.hf_repo_id }}
-          repo_type: ${{ matrix.target.repo_type }}
-          subdirectory: ${{ matrix.target.subdirectory }}
-          hf_token: ${{ secrets.HF_TOKEN }}
+          echo "release targets: $(jq 'length' <<<"$targets"); push lane: removed"
 
   release-mirror:
     needs: plan
@@ -156,7 +149,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - run: python -m pip install --upgrade "huggingface_hub[cli,hf_xet]>=1.32.0" pyyaml
+      # Exact version installed by the MEASURED v0.1.0 proof run 36154245684.
+      - run: python -m pip install --upgrade "huggingface_hub[cli,hf_xet]==2.0.0" pyyaml
 
       - name: Verify published release and exact source commit
         env:
@@ -240,8 +234,14 @@ jobs:
           rm -f "$oidc_error"
 
       - name: Stage payload
+        env:
+          HF_TOKEN: ''
         run: |
           set -euo pipefail
+          if [ -n "${HF_TOKEN:-}" ]; then
+            echo "::error::UNAVAILABLE - Hub credential visible to a step that does not call the Hub"
+            exit 1
+          fi
           rm -rf .hfstage && mkdir -p .hfstage
           rsync -a --delete \
             --exclude '.git' --exclude '.github' --exclude '.hfstage' \
@@ -252,6 +252,7 @@ jobs:
       - name: Attach release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          HF_TOKEN: ''
         run: |
           set -euo pipefail
           mkdir -p .hfmirror-assets
@@ -272,6 +273,7 @@ jobs:
       - name: Render and validate model card
         env:
           HF_OIDC_RESOURCE: ''
+          HF_TOKEN: ''
           HUB_CARD_PATH: .hfmirror-baseline/README.md
           PRESERVE_HUB_CARD: 'true'
           CARD_TEMPLATE: ${{ matrix.target.card_template }}
@@ -284,6 +286,8 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: always()
+        env:
+          HF_TOKEN: ''
         with:
           name: hf-mirror-receipt-${{ matrix.target.slug }}-${{ env.RELEASE_TAG }}
           path: hf-mirror-receipt.json
