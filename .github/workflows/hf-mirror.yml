@@ -12,13 +12,13 @@ name: hf-mirror
 # A published release dispatches the publisher on main so a branch-bound
 # Trusted Publisher can attest the workflow identity.
 #
-# AUTH: keyless via Trusted Publishers. huggingface_hub exchanges GitHub OIDC
-# for a short-lived Hub token only when HF_OIDC_RESOURCE is set. For model
+# AUTH: Trusted Publishers are the default. huggingface_hub exchanges GitHub
+# OIDC for a short-lived Hub token only when HF_OIDC_RESOURCE is set. For model
 # repos that value is namespace/name (the hf_repo_id). Spaces/datasets/kernels
 # use the prefixed form (spaces/ns/name, datasets/ns/name, kernels/ns/name).
-# Declare it on the target as oidc_resource. The release lane explicitly calls
-# `hf auth token` so the exchange happens before Python/API steps need HF_TOKEN.
-# There is no repository-secret fallback in the release publisher.
+# Declare it on the target as oidc_resource. An explicit manual dispatch may
+# select the existing repository HF_TOKEN secret for a temporary PAT proof;
+# automatic release dispatches continue to use OIDC.
 #
 # Targets are declared in .github/hf-mirror.json.
 
@@ -35,6 +35,12 @@ on:
       only:
         description: Limit to a single hf_repo_id
         required: false
+      auth:
+        description: Authentication mode for a manual release dispatch
+        type: choice
+        required: false
+        default: oidc
+        options: [oidc, pat]
 
 permissions:
   contents: read
@@ -60,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           payload=$(jq -n --arg ref "$DEFAULT_BRANCH" --arg tag "$RELEASE_TAG" \
-            '{ref: $ref, inputs: {tag: $tag}}')
+            '{ref: $ref, inputs: {tag: $tag, auth: "oidc"}}')
           response=$(gh api --method POST -H 'X-GitHub-Api-Version: 2026-03-10' \
             "repos/$GITHUB_REPOSITORY/actions/workflows/hf-mirror.yml/dispatches" \
             --input - <<<"$payload")
@@ -150,7 +156,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - run: python -m pip install --upgrade "huggingface_hub[cli,hf_xet]>=1.19.0" pyyaml
+      - run: python -m pip install --upgrade "huggingface_hub[cli,hf_xet]>=1.32.0" pyyaml
 
       - name: Verify published release and exact source commit
         env:
@@ -173,28 +179,56 @@ jobs:
           echo "release source commit: $source_sha"
 
       - name: Resolve Hub credential
+        env:
+          AUTH_MODE: ${{ inputs.auth }}
+          HF_FALLBACK_TOKEN: ${{ inputs.auth == 'pat' && secrets.HF_TOKEN || '' }}
         run: |
           set -euo pipefail
           if [ -z "${HF_OIDC_RESOURCE:-}" ]; then
             echo "::error::UNAVAILABLE - HF_OIDC_RESOURCE empty for $HF_REPO_ID"
             exit 1
           fi
-          echo "oidc_resource=$HF_OIDC_RESOURCE"
-          oidc_error="$(mktemp)"
-          oidc_token=""
-          if oidc_token="$(hf auth token 2>"$oidc_error")" && [ -n "$oidc_token" ]; then
-            echo "::add-mask::$oidc_token"
-            printf 'HF_TOKEN=%s\n' "$oidc_token" >> "$GITHUB_ENV"
-            echo "HF_AUTH_MODE=oidc" >> "$GITHUB_ENV"
-          else
-            echo "::error::UNAVAILABLE - trusted-publisher exchange failed for $HF_REPO_ID"
-            if [ -s "$oidc_error" ]; then
-              sed -E 's/hf_[A-Za-z0-9_-]+/[REDACTED]/g' "$oidc_error" >&2 || true
+          if [ "$AUTH_MODE" = "pat" ]; then
+            if [ -z "${HF_FALLBACK_TOKEN:-}" ]; then
+              echo "::error::UNAVAILABLE - HF_TOKEN repository secret is absent"
+              exit 1
+            fi
+            echo "::add-mask::$HF_FALLBACK_TOKEN"
+            python - <<'PY'
+          import os
+          from huggingface_hub import auth_check
+
+          repo = os.environ["HF_REPO_ID"]
+          try:
+              auth_check(repo_id=repo, repo_type=os.environ["HF_REPO_TYPE"],
+                         token=os.environ["HF_FALLBACK_TOKEN"], write=True)
+          except Exception as exc:
+              raise SystemExit(f"UNAVAILABLE - repository secret cannot write {repo}: {type(exc).__name__}") from None
+          print(f"repository secret write access verified for {repo}")
+          PY
+            printf 'HF_TOKEN=%s\n' "$HF_FALLBACK_TOKEN" >> "$GITHUB_ENV"
+            echo "HF_AUTH_MODE=pat" >> "$GITHUB_ENV"
+          elif [ "$AUTH_MODE" = "oidc" ]; then
+            echo "oidc_resource=$HF_OIDC_RESOURCE"
+            oidc_error="$(mktemp)"
+            oidc_token=""
+            if oidc_token="$(hf auth token 2>"$oidc_error")" && [ -n "$oidc_token" ]; then
+              echo "::add-mask::$oidc_token"
+              printf 'HF_TOKEN=%s\n' "$oidc_token" >> "$GITHUB_ENV"
+              echo "HF_AUTH_MODE=oidc" >> "$GITHUB_ENV"
+            else
+              echo "::error::UNAVAILABLE - trusted-publisher exchange failed for $HF_REPO_ID"
+              if [ -s "$oidc_error" ]; then
+                sed -E 's/hf_[A-Za-z0-9_-]+/[REDACTED]/g' "$oidc_error" >&2 || true
+              fi
+              rm -f "$oidc_error"
+              exit 1
             fi
             rm -f "$oidc_error"
+          else
+            echo "::error::UNAVAILABLE - unsupported authentication mode"
             exit 1
           fi
-          rm -f "$oidc_error"
 
       - name: Stage payload
         run: |

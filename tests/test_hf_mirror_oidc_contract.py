@@ -32,7 +32,25 @@ def test_release_mirror_requires_branch_bound_oidc() -> None:
     assert 'gh run watch "$run_id"' in text
     assert 'github.ref == format(\'refs/heads/{0}\', github.event.repository.default_branch)' in text
     assert "trusted-publisher exchange failed" in text
-    assert "HF_FALLBACK_TOKEN" not in text
+    assert "default: oidc" in text
+    assert "options: [oidc, pat]" in text
+    assert 'if [ "$AUTH_MODE" = "pat" ]; then' in text
+    assert "HF_FALLBACK_TOKEN: ${{ inputs.auth == 'pat' && secrets.HF_TOKEN || '' }}" in text
+    assert "auth_check(repo_id=repo" in text
+    assert "write=True" in text
+    assert 'echo "HF_AUTH_MODE=pat" >> "$GITHUB_ENV"' in text
+    assert 'inputs: {tag: $tag, auth: "oidc"}' in text
+
+
+def test_release_auth_labels_explicit_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    item = {"oidc_resource": "SZLHOLDINGS/szl-lambda-gate"}
+    monkeypatch.setenv("HF_MIRROR_OIDC_RESOURCE", item["oidc_resource"])
+    for mode in ("oidc", "pat"):
+        monkeypatch.setenv("HF_AUTH_MODE", mode)
+        assert mirror.release_auth(item) == mode
+    monkeypatch.setenv("HF_AUTH_MODE", "unknown")
+    with pytest.raises(RuntimeError, match="verified OIDC or PAT"):
+        mirror.release_auth(item)
 
 
 def test_release_lane_uses_reviewed_code_and_never_moves_hub_tags() -> None:
