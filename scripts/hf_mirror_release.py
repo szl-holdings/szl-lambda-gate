@@ -162,6 +162,14 @@ def without_release_block(body: str) -> str:
     return re.sub(re.escape(BEGIN) + r".*?" + re.escape(END), "", body, flags=re.S).rstrip()
 
 
+def release_auth(item: dict) -> str:
+    auth = os.environ["HF_AUTH_MODE"]
+    require(auth in ("oidc", "pat"), "release publisher requires verified OIDC or PAT auth")
+    require(os.environ["HF_MIRROR_OIDC_RESOURCE"] == item["oidc_resource"],
+            "OIDC resource differs from target map")
+    return auth
+
+
 def verify_revision(api: HfApi, item: dict, revision: str, expected_sha: str,
                     expected_files: set[str], expected_hashes: dict[str, str], token: str) -> None:
     from huggingface_hub import ModelCard
@@ -190,10 +198,7 @@ def publish() -> None:
     require("README.md" in staged, "rendered card missing")
     source_sha = os.environ["SOURCE_GITHUB_SHA"]
     require(re.fullmatch(r"[0-9a-f]{40}", source_sha) is not None, "release source SHA invalid")
-    auth = os.environ["HF_AUTH_MODE"]
-    require(auth == "oidc", "release publisher requires verified OIDC auth")
-    require(os.environ["HF_MIRROR_OIDC_RESOURCE"] == item["oidc_resource"],
-            "OIDC resource differs from target map")
+    auth = release_auth(item)
     before_card = ModelCard.load(BASELINE_DIR / "README.md")
     after_card = ModelCard.load(staged["README.md"])
     require(assert_metadata(after_card, item) == base["card_metadata"], "curated card metadata changed")
