@@ -178,23 +178,32 @@ jobs:
           echo "SOURCE_GITHUB_SHA=$source_sha" >> "$GITHUB_ENV"
           echo "release source commit: $source_sha"
 
-      - name: Resolve Hub credential
+      - name: Validate Hub credential mode
         env:
           AUTH_MODE: ${{ inputs.auth }}
-          HF_FALLBACK_TOKEN: ${{ inputs.auth == 'pat' && secrets.HF_TOKEN || '' }}
         run: |
           set -euo pipefail
           if [ -z "${HF_OIDC_RESOURCE:-}" ]; then
             echo "::error::UNAVAILABLE - HF_OIDC_RESOURCE empty for $HF_REPO_ID"
             exit 1
           fi
-          if [ "$AUTH_MODE" = "pat" ]; then
-            if [ -z "${HF_FALLBACK_TOKEN:-}" ]; then
-              echo "::error::UNAVAILABLE - HF_TOKEN repository secret is absent"
-              exit 1
-            fi
-            echo "::add-mask::$HF_FALLBACK_TOKEN"
-            python - <<'PY'
+          case "$AUTH_MODE" in
+            oidc|pat) ;;
+            *) echo "::error::UNAVAILABLE - unsupported authentication mode"; exit 1 ;;
+          esac
+
+      - name: Resolve Hub credential (PAT)
+        if: inputs.auth == 'pat'
+        env:
+          HF_FALLBACK_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_FALLBACK_TOKEN:-}" ]; then
+            echo "::error::UNAVAILABLE - HF_TOKEN repository secret is absent"
+            exit 1
+          fi
+          echo "::add-mask::$HF_FALLBACK_TOKEN"
+          python - <<'PY'
           import os
           from huggingface_hub import auth_check
 
@@ -206,29 +215,29 @@ jobs:
               raise SystemExit(f"UNAVAILABLE - repository secret cannot write {repo}: {type(exc).__name__}") from None
           print(f"repository secret write access verified for {repo}")
           PY
-            printf 'HF_TOKEN=%s\n' "$HF_FALLBACK_TOKEN" >> "$GITHUB_ENV"
-            echo "HF_AUTH_MODE=pat" >> "$GITHUB_ENV"
-          elif [ "$AUTH_MODE" = "oidc" ]; then
-            echo "oidc_resource=$HF_OIDC_RESOURCE"
-            oidc_error="$(mktemp)"
-            oidc_token=""
-            if oidc_token="$(hf auth token 2>"$oidc_error")" && [ -n "$oidc_token" ]; then
-              echo "::add-mask::$oidc_token"
-              printf 'HF_TOKEN=%s\n' "$oidc_token" >> "$GITHUB_ENV"
-              echo "HF_AUTH_MODE=oidc" >> "$GITHUB_ENV"
-            else
-              echo "::error::UNAVAILABLE - trusted-publisher exchange failed for $HF_REPO_ID"
-              if [ -s "$oidc_error" ]; then
-                sed -E 's/hf_[A-Za-z0-9_-]+/[REDACTED]/g' "$oidc_error" >&2 || true
-              fi
-              rm -f "$oidc_error"
-              exit 1
+          printf 'HF_TOKEN=%s\n' "$HF_FALLBACK_TOKEN" >> "$GITHUB_ENV"
+          echo "HF_AUTH_MODE=pat" >> "$GITHUB_ENV"
+
+      - name: Resolve Hub credential (OIDC)
+        if: inputs.auth == 'oidc'
+        run: |
+          set -euo pipefail
+          echo "oidc_resource=$HF_OIDC_RESOURCE"
+          oidc_error="$(mktemp)"
+          oidc_token=""
+          if oidc_token="$(hf auth token 2>"$oidc_error")" && [ -n "$oidc_token" ]; then
+            echo "::add-mask::$oidc_token"
+            printf 'HF_TOKEN=%s\n' "$oidc_token" >> "$GITHUB_ENV"
+            echo "HF_AUTH_MODE=oidc" >> "$GITHUB_ENV"
+          else
+            echo "::error::UNAVAILABLE - trusted-publisher exchange failed for $HF_REPO_ID"
+            if [ -s "$oidc_error" ]; then
+              sed -E 's/hf_[A-Za-z0-9_-]+/[REDACTED]/g' "$oidc_error" >&2 || true
             fi
             rm -f "$oidc_error"
-          else
-            echo "::error::UNAVAILABLE - unsupported authentication mode"
             exit 1
           fi
+          rm -f "$oidc_error"
 
       - name: Stage payload
         run: |
