@@ -16,7 +16,9 @@
       },
       "required_card_tags": ["doi:10.5281/zenodo.19944926"],
       "preserve_hub_paths": [".gitattributes", "LICENSE"],
-      "$why_no_push_lane": "hub-sync propagates deletions. This Hub repo holds artifacts that do not exist in the GitHub tree, including the build/torch-universal package that makes get_kernel import-LIVE. Mirroring is release-only and additive; the card is loaded from the Hub so its curated front matter survives.",
+      "replace_hub_paths": [],
+      "$why_replace": "Exact staged paths a release may overwrite on the Hub when the Hub bytes differ; every replacement is printed with before and after sha256 and listed in the receipt as replaced_hub_files. Empty keeps the strict additive-only rule that produced the v0.1.0 proof: any other staged file whose bytes differ from the Hub copy fails closed at preflight. Adding a path is an owner decision. README.md is rendered and can never be listed; a path cannot be both preserved and replaced.",
+      "$why_no_push_lane": "hub-sync propagates deletions. This Hub repo holds artifacts that do not exist in the GitHub tree, including the build/torch-universal package that makes get_kernel import-LIVE. The push lane has been removed from hf-mirror.yml and the plan job fails closed if any target sets mirror_on_push to anything other than false. Mirroring is release-only and additive; the card is loaded from the Hub so its curated front matter survives.",
       "hub_only_paths": [
         "build/",
         "bom/",
