@@ -25,7 +25,8 @@ class LambdaGate(nn.Module):
     """Pure Λ-gate layer.
 
     Reads optional ``self.weights`` (1-D, length k) and ``self.threshold``
-    (float, default 0.5) off the bound module instance.
+    (float) off the bound module instance. An unset threshold uses the legacy
+    0.5 with a DeprecationWarning (see ``lambda_gate``); set it explicitly.
 
     forward(axes) -> LambdaGateResult(score, passed, threshold, advisory) where
     ``score`` = Λ(axes) over the last dim and ``passed`` = score >= threshold.
@@ -34,8 +35,10 @@ class LambdaGate(nn.Module):
 
     def forward(self, axes: torch.Tensor):
         weights = getattr(self, "weights", None)
-        threshold = getattr(self, "threshold", 0.5)
-        return lambda_gate(axes, weights=weights, threshold=float(threshold))
+        threshold = getattr(self, "threshold", None)
+        if threshold is not None:
+            threshold = float(threshold)
+        return lambda_gate(axes, weights=weights, threshold=threshold)
 
 
 class LambdaAggregate(nn.Module):
