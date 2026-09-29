@@ -183,7 +183,7 @@ def test_every_vector_code_and_verdict_is_reached_through_the_kernel():
         verdicts.add(res.verdict)
         if res.verdict == "BLOCK":
             codes.add(res.code)
-    assert len(VECTORS) == SPEC["vectors"]["count"] == 50
+    assert len(VECTORS) == SPEC["vectors"]["count"] == 60
     assert codes == set(SPEC_CODES)
     assert verdicts == {"GO", "NO_GO", "ABSTAIN", "BLOCK"}
 
