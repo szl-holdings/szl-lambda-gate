@@ -1,0 +1,133 @@
+{
+  "schema": "szl.lambda/v1",
+  "title": "Λ, the weighted geometric mean, as a validated contract",
+  "status": "ADVISORY",
+  "uniqueness": "CONJECTURE_1_NOT_USED",
+  "honesty": "Λ is an advisory, non-compensatory roll-up. Λ uniqueness is Conjecture 1 (open); nothing in this contract depends on it.",
+  "form": "weighted_geometric_mean",
+  "definition": "Λ_w(x) = ∏_k x_k^{w_k}",
+  "algorithm": {
+    "log_lambda": "-inf if some x_k == 0, else math.fsum(w_k * math.log(x_k))",
+    "lambda": "0.0 if log_lambda == -inf, else math.exp(log_lambda)",
+    "weight_sum": "math.fsum(weights)",
+    "why_fsum": "fsum is correctly rounded, so Λ is bitwise invariant under a permutation of (axes, weights)"
+  },
+  "domain": {
+    "axes": "list or tuple of real numbers (bool is not a number); every x_k finite and 0 <= x_k <= 1",
+    "weights": "list or tuple of real numbers, the same length as axes; every w_k finite and w_k > 0; |fsum(weights) - 1| <= weight_sum_tol",
+    "empty": "error LAMBDA_EMPTY, never 0.0",
+    "renormalisation": "never: weights are used as declared",
+    "clamping": "never: a non-finite or out-of-range value is an error",
+    "rounding": "never before the compare",
+    "output": "Λ in [0, 1]; exactly 0.0 iff some x_k == 0 (a veto, not an error)"
+  },
+  "weight_sum_tol": 1e-12,
+  "error_codes": [
+    {
+      "code": "LAMBDA_TYPE_INVALID",
+      "when": "axes or weights is not a list/tuple (checked first), or an element is not a real number (checked after LAMBDA_LENGTH_MISMATCH)"
+    },
+    {
+      "code": "LAMBDA_EMPTY",
+      "when": "axes or weights is empty"
+    },
+    {
+      "code": "LAMBDA_LENGTH_MISMATCH",
+      "when": "len(axes) != len(weights); a dropped axis is never renormalised away"
+    },
+    {
+      "code": "LAMBDA_NONFINITE_AXIS",
+      "when": "some x_k is NaN, +Inf or -Inf"
+    },
+    {
+      "code": "LAMBDA_AXIS_OUT_OF_RANGE",
+      "when": "some x_k < 0 or x_k > 1"
+    },
+    {
+      "code": "LAMBDA_NONFINITE_WEIGHT",
+      "when": "some w_k is NaN, +Inf or -Inf"
+    },
+    {
+      "code": "LAMBDA_WEIGHT_NONPOSITIVE",
+      "when": "some w_k <= 0"
+    },
+    {
+      "code": "LAMBDA_WEIGHT_SUM",
+      "when": "|fsum(weights) - 1| > weight_sum_tol, or the sum overflows"
+    },
+    {
+      "code": "LAMBDA_TAU_INVALID",
+      "when": "gate only: tau is not a real number, not finite, or outside (0, 1]; checked before Λ"
+    }
+  ],
+  "precedence": "Checks run in the order of error_codes, each over every element, so the reported code does not depend on axis order. The gate checks tau first.",
+  "gate": {
+    "signature": "gate_v1(axes, weights, tau) -> (verdict, code)",
+    "verdicts": [
+      "GO",
+      "NO_GO",
+      "ABSTAIN",
+      "BLOCK"
+    ],
+    "tau": {
+      "required": true,
+      "implicit_default": null,
+      "domain": "real, finite, 0 < tau <= 1 (tau = 0 would pass a vetoed Λ = 0)",
+      "error": "LAMBDA_TAU_INVALID",
+      "default_source": "frontier/model_admit_contract.v1.json#/policy_tau",
+      "policy_tau_at_authoring": 0.8
+    },
+    "compare": "log space on the unrounded value: delta = log_lambda - log(tau)",
+    "tie_eps": 1e-09,
+    "rules": [
+      {
+        "if": "tau invalid, or Λ raises",
+        "verdict": "BLOCK",
+        "code": "the error code"
+      },
+      {
+        "if": "log_lambda == -inf (some axis is 0)",
+        "verdict": "NO_GO",
+        "code": "ZERO_VETO"
+      },
+      {
+        "if": "abs(delta) <= tie_eps",
+        "verdict": "ABSTAIN",
+        "code": "NUMERIC_TIE"
+      },
+      {
+        "if": "delta > 0",
+        "verdict": "GO",
+        "code": null
+      },
+      {
+        "if": "otherwise",
+        "verdict": "NO_GO",
+        "code": "BELOW_TAU"
+      }
+    ]
+  },
+  "canonical_float": "f64:<16 lowercase hex digits of the IEEE-754 binary64 bits, big-endian>",
+  "vectors": {
+    "path": "spec/lambda_v1_vectors.json",
+    "count": 50,
+    "sha256": "2a3fef3d17ca36142139fa6bd08b7f0e41526c749abc7cfd810b77cc50ab5d1f",
+    "digest": {
+      "algorithm": "sha256",
+      "over": "canonical_json",
+      "sort_keys": true,
+      "separators": [
+        ",",
+        ":"
+      ],
+      "ensure_ascii": false,
+      "allow_nan": false,
+      "encoding": "utf-8"
+    }
+  },
+  "reference": "reference/szl_lambda_v1.py",
+  "legacy_not_canonical": [
+    "tests/lambda_aggregator_source.py: +Inf counts as 1, NaN leaks, empty gives 0.0, weights are renormalised",
+    "torch-ext/szl_lambda_gate/_lambda.py lambda_aggregate: clamps, routes NaN/Inf to 0, renormalises; pinned in tests/test_lambda_v1_torch_divergence.py"
+  ]
+}

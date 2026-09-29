@@ -153,6 +153,28 @@ Any axis that is zero, **or** non-finite (NaN / ±Inf), is treated as a **failin
 
 ---
 
+## szl.lambda/v1: the contract as data
+
+The torch kernel above predates a written contract, and the estate carries several Λ copies that disagree on edge inputs. `szl.lambda/v1` fixes one contract as data:
+
+| File | What it is |
+|---|---|
+| [`spec/szl.lambda.v1.json`](./spec/szl.lambda.v1.json) | The contract: domain, error codes and their precedence, the gate rules, and where τ comes from. |
+| [`spec/lambda_v1_vectors.json`](./spec/lambda_v1_vectors.json) | Golden vectors. Floats are `f64:<hex>` (IEEE-754 bits), so NaN, ±Inf and exact values survive JSON. |
+| [`reference/szl_lambda_v1.py`](./reference/szl_lambda_v1.py) | The stdlib-only reference: `lambda_v1`, `log_lambda_v1`, `gate_v1`, `LambdaV1Error(code)`. |
+
+- **Validated, never repaired.** NaN or ±Inf, an axis outside `[0,1]`, a weight `<= 0`, `|Σw − 1| > 1e-12`, a length mismatch or an empty input each raise `LambdaV1Error` with a named `LAMBDA_*` code. Nothing is clamped, renormalised, defaulted or rounded.
+- **A zero axis is a veto, not an error.** Λ = 0, log Λ = −inf, and the gate returns `NO_GO`.
+- **The gate needs τ.** `gate_v1(axes, weights, tau)` has no default; the policy value is `policy_tau` (0.8) in [`frontier/model_admit_contract.v1.json`](./frontier/model_admit_contract.v1.json). It compares log Λ with log τ on the unrounded value, returns `ABSTAIN` within `TIE_EPS = 1e-9`, and returns `BLOCK` with the code on any contract error.
+- **Pinned vectors.** SHA-256 over canonical JSON (sorted keys, compact separators, UTF-8), also recorded in the spec: `2a3fef3d17ca36142139fa6bd08b7f0e41526c749abc7cfd810b77cc50ab5d1f`. It is computed over the parsed JSON, so a CRLF checkout gives the same digest.
+- **Conformance.** The reference matches every vector bit for bit. Other implementations must match every error code and verdict exactly, and each value within the vector's `value_tol`.
+- **Not yet v1.** The torch `lambda_aggregate` clamps x > 1, maps NaN and ±Inf to 0 and renormalises weights; `tests/test_lambda_v1_torch_divergence.py` pins each difference. `tests/lambda_aggregator_source.py` is not canonical either.
+- **Honesty.** Λ uniqueness is Conjecture 1 (open). The spec records `"uniqueness": "CONJECTURE_1_NOT_USED"` because nothing in the contract relies on Conjecture 1.
+
+Run the vectors with the standard library only: `python -m pytest -q tests/test_lambda_v1_vectors.py`.
+
+---
+
 ## What Λ IS / IS NOT — honesty (SZL Holdings doctrine)
 
 We hold this kernel to a plain-spoken standard:
