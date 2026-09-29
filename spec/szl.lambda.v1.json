@@ -110,8 +110,8 @@
   "canonical_float": "f64:<16 lowercase hex digits of the IEEE-754 binary64 bits, big-endian>",
   "vectors": {
     "path": "spec/lambda_v1_vectors.json",
-    "count": 50,
-    "sha256": "2a3fef3d17ca36142139fa6bd08b7f0e41526c749abc7cfd810b77cc50ab5d1f",
+    "count": 60,
+    "sha256": "61bfb0410b9f0eaab0eb9f22f29cb7cb13cfde8c083fe308d895565d6ba9ebd4",
     "digest": {
       "algorithm": "sha256",
       "over": "canonical_json",

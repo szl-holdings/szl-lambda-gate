@@ -81,6 +81,17 @@ TORCH_DIVERGENCE_TABLE = {
     "negative_axis": ("value", 0.0),
     "precedence_nonfinite_before_range_a": ("value", 0.0),
     "precedence_nonfinite_before_range_b": ("value", 0.0),
+    # A zero axis next to a bad one: the bad axis is routed to 0 (NaN, ±Inf, < 0) or
+    # clamped to 1 (> 1), so the zero axis vetoes to 0.0 in either order. v1 refuses
+    # the bad axis first (szl-receipt#38 fixed the same masking in its lambda_score).
+    "precedence_zero_does_not_mask_nan_a": ("value", 0.0),
+    "precedence_zero_does_not_mask_nan_b": ("value", 0.0),
+    "precedence_zero_does_not_mask_pos_inf_a": ("value", 0.0),
+    "precedence_zero_does_not_mask_pos_inf_b": ("value", 0.0),
+    "precedence_zero_does_not_mask_x_gt_1_a": ("value", 0.0),
+    "precedence_zero_does_not_mask_x_gt_1_b": ("value", 0.0),
+    "precedence_zero_does_not_mask_negative_a": ("value", 0.0),
+    "precedence_zero_does_not_mask_negative_b": ("value", 0.0),
     # E5: weights are renormalised instead of refused.
     "w_unnormalised_2_2": ("value", 0.72),
     "weight_sum_outside_tol": ("value", 0.67082),
