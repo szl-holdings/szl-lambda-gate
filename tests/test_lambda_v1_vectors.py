@@ -279,6 +279,28 @@ def test_named_rows_have_the_planned_outcomes():
     assert _by_id("tie_outside_below")["expect"]["verdict"] == "NO_GO"
 
 
+# A copy that returned 0.0 at the first zero axis, before validating the rest, passed every
+# row at d3443b0 (szl-receipt#38, FF-03b). Each bad axis sits next to a zero, in both orders.
+ZERO_MASK_ROWS = {
+    "nan": "LAMBDA_NONFINITE_AXIS",
+    "pos_inf": "LAMBDA_NONFINITE_AXIS",
+    "x_gt_1": "LAMBDA_AXIS_OUT_OF_RANGE",
+    "negative": "LAMBDA_AXIS_OUT_OF_RANGE",
+    "bool": "LAMBDA_TYPE_INVALID",
+}
+
+
+def test_a_zero_axis_does_not_mask_an_invalid_axis_in_either_order():
+    for stem, code in ZERO_MASK_ROWS.items():
+        zero_first = _by_id(f"precedence_zero_does_not_mask_{stem}_a")
+        bad_first = _by_id(f"precedence_zero_does_not_mask_{stem}_b")
+        assert zero_first["axes"][0] == _f64(0.0), stem
+        assert zero_first["axes"] == bad_first["axes"][::-1], stem
+        for row in (zero_first, bad_first):
+            assert _decode(row["weights"]) == [0.5, 0.5] and _decode(row["tau"]) == 0.5, row["id"]
+            assert row["expect"] == {"error": code, "verdict": "BLOCK", "code": code}, row["id"]
+
+
 @pytest.mark.parametrize("vector", VECTORS, ids=[v["id"] for v in VECTORS])
 def test_reference_matches_vector(vector):
     axes, weights, tau = _decode(vector["axes"]), _decode(vector["weights"]), _decode(vector["tau"])
