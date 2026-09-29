@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # © 2026 Lutar, Stephen P. — SZL Holdings · ORCID 0009-0001-0110-4173
-# CANONICAL SOURCE pulled from szl-holdings/platform packages/puriq-os/puriq_os/lambda_aggregator.py
+# Provenance: pulled from szl-holdings/platform packages/puriq-os/puriq_os/lambda_aggregator.py
+# NOT canonical: +Inf is treated as 1, NaN leaks through, empty returns 0.0 and weights are
+# renormalised. The szl.lambda/v1 contract is spec/szl.lambda.v1.json (reference/szl_lambda_v1.py).
 """
 lambda_aggregator.py — Λ(x), the Lambda-Spine aggregator (canonical D2, v11 §12).
 
