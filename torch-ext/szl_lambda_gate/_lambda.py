@@ -44,9 +44,42 @@ Axioms carried (Lutar/Axioms.lean), available below as runtime self-checks:
   A3 IsEgyptianExact   — Λ(c,…,c) = c       (the uniform-diagonal fixpoint)
   A4 IsBounded(by max) — Λ(x) ≤ maxᵢ xᵢ
 """
+import warnings
 from typing import Optional
 
 import torch
+
+# ---- the deprecated implicit threshold ------------------------------------- #
+# lambda_gate / lambda_gate_batch / layers.LambdaGate used to default to 0.5.
+# That default stays, so there is no behaviour change, but omitting the
+# threshold now raises a DeprecationWarning. The admit policy value is
+# policy_tau in frontier/model_admit_contract.v1.json, and the strict
+# szl.lambda/v1 gate (_v1.lambda_v1_gate) takes tau as a required argument.
+_LEGACY_DEFAULT_THRESHOLD = 0.5
+_DEFAULT_THRESHOLD_WARNING = (
+    "default threshold 0.5 differs from policy_tau 0.8; pass tau. Omitting the "
+    "threshold of lambda_gate / lambda_gate_batch / LambdaGate is deprecated: "
+    "pass threshold= explicitly (policy_tau is in "
+    "frontier/model_admit_contract.v1.json), or use the strict "
+    "lambda_v1_gate(axes, weights, tau). The legacy default 0.5 still applies."
+)
+
+
+def _resolve_threshold(threshold: Optional[float], stacklevel: int) -> float:
+    """``None`` (the threshold was omitted) -> the legacy 0.5, with a DeprecationWarning.
+
+    ``stacklevel`` is what the calling entry point would pass to
+    ``warnings.warn`` itself (2 = its caller), so the warning names the line
+    that omitted the threshold. Dynamo cannot trace ``warnings.warn`` (a
+    fullgraph compile would fail), so the warning is skipped while
+    ``torch.compile`` traces; the default is applied either way.
+    """
+    if threshold is not None:
+        return threshold
+    if not bool(getattr(torch.compiler, "is_compiling", lambda: False)()):
+        warnings.warn(_DEFAULT_THRESHOLD_WARNING, DeprecationWarning, stacklevel=stacklevel + 1)
+    return _LEGACY_DEFAULT_THRESHOLD
+
 
 # Compute reductions/log-sum in float32 for stability when inputs are low
 # precision; keep float64 inputs in float64 (downcasting would break gradcheck
@@ -119,6 +152,8 @@ def _resolve_weights(
         return wf / sw
     # Compiled path stays in tensor-land. Non-positive weights are a misuse;
     # clamp them away from zero so the graph does not break, then normalize.
+    # This path is outside szl.lambda/v1; _v1.lambda_v1 validates before it
+    # gets here and is not meant to run under torch.compile.
     wf = torch.where(torch.isfinite(wf), wf, torch.ones_like(wf))
     wf = torch.clamp(wf, min=torch.finfo(wf.dtype).tiny)
     return wf / wf.sum()
@@ -155,6 +190,10 @@ def lambda_aggregate(
         tensor of shape (...) — Λ(x) ∈ [0,1] per batch row. Differentiable
         w.r.t. ``axes`` (and ``weights``).
 
+    NOT the szl.lambda/v1 contract: this function clamps, zero-routes NaN/±Inf
+    and renormalises (pinned in tests/test_lambda_v1_torch_divergence.py). For
+    validated, coded errors use :func:`szl_lambda_gate._v1.lambda_v1`.
+
     HONESTY: this is a non-compensatory governance roll-up, NOT proven trust.
     Λ-uniqueness is Conjecture 1 (open).
     """
@@ -188,12 +227,18 @@ def lambda_aggregate(
 def lambda_gate(
     axes: torch.Tensor,
     weights: Optional[torch.Tensor] = None,
-    threshold: float = 0.5,
+    threshold: Optional[float] = None,
 ):
     """ADVISORY governance gate over Λ(x): score plus a pass/fail vs threshold.
 
     Computes Λ(x) (see :func:`lambda_aggregate`) and compares it to
     ``threshold``: pass := Λ(x) >= threshold.
+
+    DEPRECATED DEFAULT: omitting ``threshold`` (or passing ``None``) still uses
+    the legacy 0.5 but raises a ``DeprecationWarning``, because 0.5 differs
+    from the admit contract's policy_tau (0.8). Pass the threshold explicitly,
+    or use the strict szl.lambda/v1 gate
+    :func:`szl_lambda_gate._v1.lambda_v1_gate`, where tau is required.
 
     ``threshold`` must be a finite float within Λ's range ``[0, 1]`` (Λ is the
     weighted geometric mean over [0,1]). This bound is enforced: a threshold
@@ -220,6 +265,7 @@ def lambda_gate(
     mean aggregator; its uniqueness is Conjecture 1 (open). Do not treat a
     pass as proven trust or a closed theorem.
     """
+    threshold = _resolve_threshold(threshold, stacklevel=2)
     t = float(threshold)
     if t != t or t == float("inf") or t == float("-inf"):
         raise ValueError(f"threshold must be a finite float, got {threshold!r}")
@@ -238,7 +284,7 @@ def lambda_gate(
 def lambda_gate_batch(
     candidates: torch.Tensor,
     weights: Optional[torch.Tensor] = None,
-    threshold: float = 0.5,
+    threshold: Optional[float] = None,
 ):
     """ADVISORY batch gate: score MANY candidate action-vectors in one call.
 
@@ -252,7 +298,8 @@ def lambda_gate_batch(
     calling :func:`lambda_gate` on the whole tensor — the reduction is over the
     last dim — but named to make the agent-loop intent explicit. ``threshold``
     inherits the same [0,1] domain guard as :func:`lambda_gate` (a threshold
-    outside Λ's range is a misconfiguration and is rejected).
+    outside Λ's range is a misconfiguration and is rejected). Omitting it uses
+    the legacy 0.5 with a ``DeprecationWarning``, as in :func:`lambda_gate`.
 
     Returns a :class:`LambdaGateResult` with:
         score     — Λ tensor of shape (..., N), one score per candidate
@@ -263,6 +310,7 @@ def lambda_gate_batch(
     HONESTY: the pass mask is an ADVISORY, non-compensatory signal. A "pass"
     is not proven trust; Λ-uniqueness is Conjecture 1 (open).
     """
+    threshold = _resolve_threshold(threshold, stacklevel=2)
     _check_axes(candidates)
     if candidates.dim() < 2:
         raise ValueError(

@@ -22,6 +22,12 @@ Load from the Hub:
     res = lg.lambda_gate(axes, threshold=0.5)    # ADVISORY pass/fail
     print(res.score, res.passed, res.advisory)
 
+    # szl.lambda/v1 strict gate (spec/szl.lambda.v1.json): no clamping, no
+    # renormalisation, tau required; bad input -> verdict BLOCK with a code.
+    w = torch.tensor([0.4, 0.3, 0.3], dtype=torch.float64)
+    v1 = lg.lambda_v1_gate(axes.double(), w, tau=0.8)
+    print(v1.verdict, v1.code)                   # GO / NO_GO / ABSTAIN / BLOCK
+
 WHAT Λ IS / IS NOT (HONESTY — SZL Holdings doctrine v11):
   Λ is the weighted-geometric-mean aggregator — a non-compensatory, ADVISORY
   way to roll axis scores in [0,1] into one number (any zeroed axis zeroes the
@@ -44,6 +50,7 @@ from . import layers  # noqa: F401  (must be importable for Hub layer mapping)
 # nothing was deleted (additive, reversible copy). Λ stays Conjecture 1.
 from . import governed_norm  # noqa: F401  (folded-in governed normalization kernels)
 from ._lambda import YUYAY_AXES, YUYAY_FLOORS, LambdaGateResult
+from ._lambda import _resolve_threshold
 from ._lambda import find_axiom_violation as _find_axiom_violation
 from ._lambda import is_bounded_by_max as _is_bounded_by_max
 from ._lambda import is_egyptian_exact as _is_egyptian_exact
@@ -54,12 +61,18 @@ from ._lambda import lambda_gate as _lambda_gate
 from ._lambda import lambda_gate_batch as _lambda_gate_batch
 from ._lambda import selfcheck as _selfcheck
 from ._lambda import yuyay_weights as _yuyay_weights
+# szl.lambda/v1 strict entry (spec/szl.lambda.v1.json): validated, coded, tau required.
+from ._v1 import LambdaV1Error, LambdaV1GateResult, lambda_v1, lambda_v1_gate
 
 __all__ = [
     "lambda_aggregate",
     "lambda_gate",
     "lambda_gate_batch",
     "LambdaGateResult",
+    "lambda_v1",
+    "lambda_v1_gate",
+    "LambdaV1Error",
+    "LambdaV1GateResult",
     "is_monotone",
     "is_egyptian_exact",
     "is_bounded_by_max",
@@ -122,31 +135,36 @@ def lambda_aggregate(
 def lambda_gate(
     axes: torch.Tensor,
     weights: Optional[torch.Tensor] = None,
-    threshold: float = 0.5,
+    threshold: Optional[float] = None,
 ) -> LambdaGateResult:
     """ADVISORY Λ governance gate: returns LambdaGateResult(score, passed,
     threshold, advisory). ``passed`` = Λ(axes) >= threshold. ``threshold`` must
     lie within Λ's range [0,1] (a value outside it is a misconfiguration — a
     negative threshold would advisory-pass a fully-failing Λ=0 candidate — and
-    is rejected). A pass is an advisory, non-compensatory signal — NOT proven
-    trust (Λ = Conjecture 1).
+    is rejected). Omitting it uses the legacy 0.5 with a DeprecationWarning
+    (policy_tau is 0.8); pass it, or use ``lambda_v1_gate(axes, weights, tau)``.
+    A pass is an advisory, non-compensatory signal — NOT proven trust
+    (Λ = Conjecture 1).
     """
+    threshold = _resolve_threshold(threshold, stacklevel=2)
     return _lambda_gate(axes, weights=weights, threshold=threshold)
 
 
 def lambda_gate_batch(
     candidates: torch.Tensor,
     weights: Optional[torch.Tensor] = None,
-    threshold: float = 0.5,
+    threshold: Optional[float] = None,
 ) -> LambdaGateResult:
     """ADVISORY batch gate over many candidate action-vectors (shape (..., N, k)).
 
     The realistic per-inference-step call: score all N candidates at once and
     return the advisory pass mask. Returns LambdaGateResult(score, passed,
     threshold, advisory) with score/passed of shape (..., N). ``threshold``
-    must lie within Λ's range [0,1] (same domain guard as ``lambda_gate``).
+    must lie within Λ's range [0,1] (same domain guard as ``lambda_gate``);
+    omitting it uses the legacy 0.5 with a DeprecationWarning.
     NOT proven trust.
     """
+    threshold = _resolve_threshold(threshold, stacklevel=2)
     return _lambda_gate_batch(candidates, weights=weights, threshold=threshold)
 
 
