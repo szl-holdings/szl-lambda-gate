@@ -182,7 +182,9 @@ after the workflow re-reads this repo from the Hub.
 {END}"""
 
 if BEGIN in body and END in body:
-    body = re.sub(re.escape(BEGIN) + r".*?" + re.escape(END), block, body, flags=re.S)
+    # A callable replacement is inserted verbatim. A string one is a template,
+    # so a backslash in the release notes would raise or alter the notes.
+    body = re.sub(re.escape(BEGIN) + r".*?" + re.escape(END), lambda _m: block, body, flags=re.S)
 else:
     body = body.rstrip() + "\n\n" + block + "\n"
 

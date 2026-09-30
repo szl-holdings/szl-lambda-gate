@@ -152,7 +152,8 @@ def install_stand_ins(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, baseline: str = BASELINES["block-at-end"],
-              payload: tuple[str, ...] = PAYLOAD, subdir: str = ".") -> Path:
+              payload: tuple[str, ...] = PAYLOAD, subdir: str = ".",
+              notes: str = "Release notes for the fixture.") -> Path:
     """Lay out what the release lane has on disk when the card is rendered."""
     work = tmp_path / "work"
     stage = work / ".hfstage"
@@ -167,7 +168,7 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, baseline: str 
     (work / ".hfmirror-release.json").write_text(json.dumps({
         "tagName": TAG, "isDraft": False, "assets": [],
         "url": f"https://github.com/{GH_REPO}/releases/tag/{TAG}",
-        "body": "Release notes for the fixture.",
+        "body": notes,
     }), encoding="utf-8")
     env = {
         "HF_REPO_ID": REPO_ID, "HF_REPO_TYPE": "model", "RELEASE_TAG": TAG, "GITHUB_REPOSITORY": GH_REPO,
@@ -262,6 +263,31 @@ def test_re_rendering_replaces_the_block_instead_of_stacking(
     _, body = render()
     assert body.count(HEADING) == 1
     assert (work / ".hfstage" / "README.md").read_bytes() == first
+
+
+# Release notes are untrusted Markdown. As a re.sub template string, `\d`
+# raises "bad escape", `\1` raises "invalid group reference", `\\` collapses
+# to one backslash and `\g<0>` inserts the replaced block.
+BACKSLASH_NOTES = {
+    "bad-escape": r"Fix C:\dist\szl in the PR title (#12)",
+    "doubled-backslash": r"Escape it as C:\\build in YAML",
+    "group-reference": r"Use \1 in the regex",
+    "whole-match": r"Use \g<0> in the regex",
+    "all": "- Windows path C:\\Users\\dev\\szl (#7)\n- regex `\\d+\\\\s*\\1`\n- literal `\\g<0>`",
+}
+
+
+@pytest.mark.parametrize("case", sorted(BACKSLASH_NOTES))
+@pytest.mark.parametrize("shape", sorted(BASELINES))
+def test_release_notes_with_backslashes_render_verbatim(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shape: str, case: str) -> None:
+    notes = BACKSLASH_NOTES[case]
+    work = workspace(tmp_path, monkeypatch, baseline=BASELINES[shape], notes=notes)
+    render()
+    # Bytes, not read_text(): newline translation must not mask a change.
+    _, body = split_card((work / ".hfstage" / "README.md").read_bytes().decode("utf-8"))
+    assert f"## Mirrored release {TAG}\n\n{notes}\n\n| Field | Value |" in block_of(body)
+    assert mirror.without_release_block(body) == mirror.without_release_block(BASELINES[shape])
 
 
 # --- fail closed ------------------------------------------------------------------
