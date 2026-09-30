@@ -94,8 +94,14 @@ def test_lambda_gate_replacements_are_exact_reviewed_source_paths() -> None:
         "torch-ext/szl_lambda_gate/__init__.py",
         "torch-ext/szl_lambda_gate/_lambda.py",
         "torch-ext/szl_lambda_gate/layers.py",
+        "szl-lambda-gate-sbom-2.spdx.json",
+        "szl-lambda-gate-sbom.cyclonedx.json",
     ]
-    assert all((ROOT / path).is_file() for path in item["replace_hub_paths"])
+    assert all((ROOT / path).is_file() for path in item["replace_hub_paths"][:4])
+    # SBOMs are digest-verified GitHub release assets, not source-tree files.
+    assert item["replace_hub_paths"][4:] == [
+        "szl-lambda-gate-sbom-2.spdx.json", "szl-lambda-gate-sbom.cyclonedx.json",
+    ]
     with pytest.raises(RuntimeError, match="collision differs: build.toml"):
         mirror.collision_plan({"build.toml": "new"}, {"build.toml": "old"}, item)
 
