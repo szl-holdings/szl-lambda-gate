@@ -45,6 +45,11 @@ creates no signature and claims no SLSA level. The check report explicitly says
 4. Publish only reviewed releases. Verify the remote package at its exact Hub
    commit through `get_kernel`, with the repository explicitly allowlisted for
    remote code. A successful upload alone does not establish conformance.
+   Check each consumer reference separately: updating `main` does not advance
+   the `v1` branch used by `get_kernel(..., version=1)`. Both channels must resolve
+   to packages from the intended source commit. Verify each channel's resolved
+   commit and all vectors after publication; a passing review commit does not
+   prove the published branch was updated.
 5. Record source commit, Hub commit, vector digest, loader, device, and test
    outcome in publication evidence. Refresh website inventory from that measured
    evidence. Models, Spaces, and datasets unrelated to Lambda need no new copy.
