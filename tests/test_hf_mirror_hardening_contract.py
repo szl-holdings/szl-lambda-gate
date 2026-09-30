@@ -7,12 +7,14 @@ stand-in for huggingface_hub, so no test touches the network.
 """
 from __future__ import annotations
 
+import fnmatch
 import importlib.util
 import json
 import re
+import shlex
 import sys
 import types
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -314,3 +316,63 @@ def test_workflow_actions_keep_their_reviewed_sha_pins() -> None:
         "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     ]
+
+
+# --- (e) the szl.lambda/v1 contract reaches the Hub (HF-01) --------------------
+
+# The card's szl.lambda/v1 section links these files at the release commit.
+# The release lane must stage them, or the Hub copy would lack what the card
+# names.
+LAMBDA_V1_PAYLOAD = (
+    "spec/szl.lambda.v1.json",
+    "spec/lambda_v1_vectors.json",
+    "reference/szl_lambda_v1.py",
+    "frontier/model_admit_contract.v1.json",
+)
+
+
+def stage_rsync() -> list[str]:
+    """Return the argv of the one rsync that builds .hfstage."""
+    lines = step(workflow(), "release-mirror", "name: Stage payload").splitlines()
+    starts = [i for i, line in enumerate(lines) if line.strip().startswith("rsync ")]
+    assert len(starts) == 1
+    command = []
+    for line in lines[starts[0]:]:
+        command.append(line.strip().removesuffix("\\"))
+        if not line.rstrip().endswith("\\"):
+            break
+    return shlex.split(" ".join(command))
+
+
+def test_stage_payload_does_not_exclude_spec_or_reference() -> None:
+    argv = stage_rsync()
+    assert argv[-2:] == ["release-source/${SUBDIR:-.}/", ".hfstage/"]
+    options = argv[1:-2]
+    excludes = options[3::2]
+    # Every option is pinned: no --include, --filter, --exclude-from or -C
+    # can drop a file without this test changing.
+    assert options[:2] == ["-a", "--delete"]
+    assert options[2::2] == ["--exclude"] * 5
+    assert excludes == [".git", ".github", ".hfstage", "tests", "__pycache__"]
+    for rel in LAMBDA_V1_PAYLOAD:
+        assert (ROOT / rel).is_file(), rel
+        for part in PurePosixPath(rel).parts:
+            for pattern in excludes:
+                assert not fnmatch.fnmatchcase(part, pattern), (rel, pattern)
+    assert "spec" not in excludes and "reference" not in excludes
+
+
+def test_lambda_v1_payload_is_neither_preserved_nor_hub_only() -> None:
+    item = json.loads(CONFIG.read_text(encoding="utf-8"))["targets"][0]
+    assert item["subdirectory"] == "."
+    for key in ("preserve_hub_paths", "hub_only_paths"):
+        for name in item[key]:
+            for rel in LAMBDA_V1_PAYLOAD:
+                assert rel != name and not (name.endswith("/") and rel.startswith(name)), (key, name, rel)
+
+
+def test_lambda_gate_target_keeps_mirror_on_push_false() -> None:
+    targets = json.loads(CONFIG.read_text(encoding="utf-8"))["targets"]
+    assert [item["hf_repo_id"] for item in targets] == [REPO_ID]
+    assert "mirror_on_push" in targets[0]
+    assert targets[0]["mirror_on_push"] is False
