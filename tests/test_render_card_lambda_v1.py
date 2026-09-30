@@ -370,7 +370,7 @@ def nan_with_matching_digest(stage: Path) -> None:
     text = (stage / VECTORS).read_text(encoding="utf-8")
     assert text.count('"value_tol": 1e-12') >= 1
     (stage / VECTORS).write_text(text.replace('"value_tol": 1e-12', '"value_tol": NaN', 1), encoding="utf-8")
-    re_record(stage, count=50, allow_nan=True)
+    re_record(stage, count=len(json.loads(text)["vectors"]), allow_nan=True)
 
 
 def bool_count_with_matching_length(stage: Path) -> None:
