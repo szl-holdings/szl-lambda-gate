@@ -82,12 +82,18 @@ def step(text: str, job: str, marker: str) -> str:
 # --- (a) reviewed replacements -------------------------------------------------
 
 
-def test_lambda_gate_default_replace_list_is_empty() -> None:
+def test_lambda_gate_replacements_are_exact_reviewed_source_paths() -> None:
     targets = json.loads(CONFIG.read_text(encoding="utf-8"))["targets"]
     assert len(targets) == 1
     item = targets[0]
     assert item["hf_repo_id"] == REPO_ID
-    assert item["replace_hub_paths"] == []
+    assert item["replace_hub_paths"] == [
+        "scripts/render_model_card.py",
+        "torch-ext/szl_lambda_gate/__init__.py",
+        "torch-ext/szl_lambda_gate/_lambda.py",
+        "torch-ext/szl_lambda_gate/layers.py",
+    ]
+    assert all((ROOT / path).is_file() for path in item["replace_hub_paths"])
     with pytest.raises(RuntimeError, match="collision differs: build.toml"):
         mirror.collision_plan({"build.toml": "new"}, {"build.toml": "old"}, item)
 
