@@ -6,13 +6,14 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from build_lambda_distribution import build, canonical_bytes, source_snapshot  # noqa: E402
-from check_lambda_distribution import verify_files  # noqa: E402
+from check_lambda_distribution import load_remote, verify_files  # noqa: E402
 
 
 @pytest.fixture
@@ -98,3 +99,13 @@ def test_verifier_requires_the_expected_source_commit(committed_source, tmp_path
     build(repo, commit, output)
     with pytest.raises(ValueError, match="expected commit"):
         verify_files(output, "0" * 40, repo)
+
+
+@pytest.mark.parametrize("loader_version,repo_type", [("0.12.3", "kernel"), ("0.17.1", "model")])
+def test_remote_verifier_refuses_wrong_repository_type_before_loading(monkeypatch, loader_version, repo_type):
+    def must_not_load(*args, **kwargs):
+        raise AssertionError("unsupported repository type must never be loaded")
+    monkeypatch.setitem(sys.modules, "kernels", SimpleNamespace(get_kernel=must_not_load))
+    monkeypatch.setattr("check_lambda_distribution.importlib.metadata.version", lambda _: loader_version)
+    with pytest.raises(ValueError, match="repository verification requires"):
+        load_remote("SZLHOLDINGS/szl-lambda-gate", "a" * 40, repo_type)

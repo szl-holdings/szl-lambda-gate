@@ -115,16 +115,17 @@ def load_local(root: Path):
     return kernels.get_local_kernel(root, backend="cpu")
 
 
-def download_remote(repo: str, revision: str, expected_commit: str, source_repo: Path, root: Path) -> str:
+def download_remote(repo: str, revision: str, expected_commit: str, source_repo: Path,
+                    root: Path, repo_type: str = "kernel") -> str:
     """Download trusted expected files and reject unknown executable variant files."""
     from huggingface_hub import HfApi, hf_hub_download
 
     api = HfApi()
-    resolved = api.repo_info(repo, repo_type="kernel", revision=revision).sha
+    resolved = api.repo_info(repo, repo_type=repo_type, revision=revision).sha
     if not resolved:
         raise ValueError("Hub revision did not resolve to a commit")
     _, expected = distribution_payload(source_repo, expected_commit)
-    remote = set(api.list_repo_files(repo, repo_type="kernel", revision=resolved))
+    remote = set(api.list_repo_files(repo, repo_type=repo_type, revision=resolved))
     missing = set(expected) - remote
     if missing:
         raise ValueError(f"remote distribution files missing: {sorted(missing)}")
@@ -133,11 +134,24 @@ def download_remote(repo: str, revision: str, expected_commit: str, source_repo:
         if {p for p in remote if p.startswith(variant + "/")} != {p for p in expected if p.startswith(variant + "/")}:
             raise ValueError(f"remote variant file set differs: {variant}")
     for name in sorted(expected):
-        cached = hf_hub_download(repo, filename=name, repo_type="kernel", revision=resolved)
+        cached = hf_hub_download(repo, filename=name, repo_type=repo_type, revision=resolved)
         destination = root / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(Path(cached).read_bytes())
     return resolved
+
+
+def load_remote(repo: str, revision: str, repo_type: str):
+    import kernels
+
+    modern = tuple(map(int, importlib.metadata.version("kernels").split(".")[:2])) >= (0, 16)
+    if repo_type == "model":
+        if modern:
+            raise ValueError("model-repository verification requires the legacy kernels < 0.16 loader")
+        return kernels.get_kernel(repo, revision=revision)
+    if not modern:
+        raise ValueError("kernel-repository verification requires kernels >= 0.16")
+    return kernels.get_kernel(repo, revision=revision, backend="cpu", trust_remote_code=[repo])
 
 
 def main() -> None:
@@ -146,6 +160,8 @@ def main() -> None:
     origin.add_argument("--local", type=Path)
     origin.add_argument("--remote-revision", help="Hub kernel commit or review ref to verify")
     parser.add_argument("--remote-repo", default="SZLHOLDINGS/szl-lambda-gate")
+    parser.add_argument("--remote-repo-type", choices=("kernel", "model"), default="kernel",
+                        help="kernel for the current loader; model for the legacy loader")
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--source-repo", type=Path, default=ROOT)
@@ -156,14 +172,11 @@ def main() -> None:
     root = Path(scratch.name) if scratch else args.local
     hub_revision = None
     if args.remote_revision:
-        hub_revision = download_remote(args.remote_repo, args.remote_revision, args.expected_commit, args.source_repo, root)
+        hub_revision = download_remote(args.remote_repo, args.remote_revision, args.expected_commit,
+                                       args.source_repo, root, args.remote_repo_type)
     receipt = verify_files(root, args.expected_commit, args.source_repo)
     if hub_revision:
-        import kernels
-        if tuple(map(int, importlib.metadata.version("kernels").split(".")[:2])) < (0, 14):
-            raise ValueError("remote kernel verification requires kernels >= 0.14")
-        kernel = kernels.get_kernel(args.remote_repo, revision=hub_revision, backend="cpu",
-                                    trust_remote_code=[args.remote_repo])
+        kernel = load_remote(args.remote_repo, hub_revision, args.remote_repo_type)
     else:
         kernel = load_local(root)
     rows = json.loads((root / "spec/lambda_v1_vectors.json").read_bytes())["vectors"]
@@ -187,6 +200,7 @@ def main() -> None:
         "torch_version": importlib.metadata.version("torch"), "device": "cpu",
         "signature_verified": False,
         "hub_repository": args.remote_repo if hub_revision else None,
+        "hub_repository_type": args.remote_repo_type if hub_revision else None,
         "hub_revision": hub_revision,
     }
     if args.receipt:

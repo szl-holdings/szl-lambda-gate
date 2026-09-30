@@ -50,6 +50,11 @@ creates no signature and claims no SLSA level. The check report explicitly says
    to packages from the intended source commit. Verify each channel's resolved
    commit and all vectors after publication; a passing review commit does not
    prove the published branch was updated.
+   The legacy `kernels==0.12.3` consumer loads the model repository, while the
+   current loader uses the kernel repository. Mirroring Python source alone
+   does not rebuild Hub-only `build/` files. Check that legacy distribution
+   separately with `--remote-repo-type model`; the verifier rejects a repository
+   type unsupported by the selected loader before importing remote code.
 5. Record source commit, Hub commit, vector digest, loader, device, and test
    outcome in publication evidence. Refresh website inventory from that measured
    evidence. Models, Spaces, and datasets unrelated to Lambda need no new copy.
