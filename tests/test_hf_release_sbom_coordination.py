@@ -237,6 +237,6 @@ def test_release_dispatch_waits_before_publisher_and_keeps_main_oidc_identity():
     assert "RELEASE_PUBLISHED_AT: ${{ github.event.release.published_at }}" in dispatch
     assert "ref: ${{ github.event.repository.default_branch }}" in dispatch
     assert dispatch.index("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1") < dispatch.index("python3 scripts/wait_release_sbom.py")
-    assert dispatch.index("python3 scripts/wait_release_sbom.py") < dispatch.index("Dispatch reviewed publisher on main")
+    assert dispatch.index("python3 scripts/wait_release_sbom.py") < dispatch.index("Dispatch reviewed Hub proposal on main")
     assert '{ref: $ref, inputs: {tag: $tag, auth: "oidc"}}' in dispatch
     assert "--timeout-seconds 900" in dispatch

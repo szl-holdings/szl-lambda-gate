@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish an additive, source-bound Hugging Face release with a verified receipt.
+"""Propose an additive, source-bound Hub release or verify a prior receipt.
 
 This script runs from the reviewed default-branch checkout. The release-tag
 checkout is payload data only; its scripts are never executed by the publisher.
@@ -21,6 +21,7 @@ BASELINE_FILE = BASELINE_DIR / "evidence.json"
 RELEASE_FILE = Path(".hfmirror-release.json")
 ASSETS_DIR = Path(".hfmirror-assets")
 RECEIPT_FILE = Path("hf-mirror-receipt.json")
+PROPOSAL_FILE = Path("hf-mirror-proposal.json")
 PRIOR_RECEIPT_FILE = Path(".hfmirror-prior/hf-mirror-receipt.json")
 PRIOR_RUN_FILE = Path(".hfmirror-prior/run.json")
 BEGIN = "<!-- SZL-HF-MIRROR:START -->"
@@ -281,7 +282,7 @@ def verify_revision(api: HfApi, item: dict, revision: str, expected_sha: str,
             f"Hub {revision} moved during verification")
 
 
-def publish() -> None:
+def publish() -> str:
     from huggingface_hub import HfApi, ModelCard
     from huggingface_hub.errors import RevisionNotFoundError
 
@@ -331,7 +332,7 @@ def publish() -> None:
                     f"historical publication {key} mismatch")
     # The refs listing can deny a repo-scoped publisher token on a gated model,
     # even when that token can resolve a named revision and write this repo.
-    # Only a missing revision permits a new publication; other errors fail closed.
+    # Only a missing revision permits a new Hub PR proposal; other errors fail closed.
     try:
         tagged = api.repo_info(repo, repo_type=repo_type, revision=tag)
     except RevisionNotFoundError:
@@ -345,17 +346,51 @@ def publish() -> None:
                 "existing Hub tag requires receipt_run for read-only historical verification")
         require(oid == prior["hf_revision"], "existing Hub tag differs from publication receipt")
     else:
+        require(item.get("hub_pr_required") is True, "Hub PR publication policy is required")
         commit = api.upload_folder(
             repo_id=repo, repo_type=repo_type, folder_path=str(STAGE), token=token,
             parent_commit=base["sha"],
+            create_pr=True,
             commit_message=f"mirror {tag} from {os.environ['GITHUB_REPOSITORY']}@{source_sha}",
         )
-        require(re.fullmatch(r"[0-9a-f]{40}", commit.oid or "") is not None, "Hub upload commit missing")
-        oid = commit.oid
-        verify_revision(api, item, oid, oid, expected_files, expected_hashes, token)
-        notes = (release().get("body") or f"Mirror of {os.environ['GITHUB_REPOSITORY']} {tag}")[:4000]
-        api.create_tag(repo, tag=tag, tag_message=notes, revision=oid, repo_type=repo_type,
-                       token=token, exist_ok=False)
+        oid = getattr(commit, "oid", None)
+        pr_url = getattr(commit, "pr_url", None)
+        pr_revision = getattr(commit, "pr_revision", None)
+        require(isinstance(oid, str) and re.fullmatch(r"[0-9a-f]{40}", oid) is not None,
+                "Hub proposal commit missing")
+        match = re.fullmatch(rf"https://huggingface\.co/{re.escape(repo)}/discussions/([1-9][0-9]*)",
+                             pr_url or "")
+        require(match is not None and pr_revision == f"refs/pr/{match.group(1)}",
+                "Hub proposal URL or revision missing")
+        proposal = {
+            "state": "PENDING_HUB_PR_UNVERIFIED", "operation": "propose",
+            "github_repo": os.environ["GITHUB_REPOSITORY"], "github_sha": source_sha,
+            "github_workflow_sha": os.environ["GITHUB_SHA"], "github_tag": tag,
+            "hf_repo_id": repo, "hf_repo_type": repo_type,
+            "hf_oidc_resource": os.environ["HF_MIRROR_OIDC_RESOURCE"],
+            "hf_main_before": base["sha"], "hf_pr_url": pr_url,
+            "hf_pr_revision": pr_revision, "hf_pr_commit": oid,
+            "file_count_before": len(base["files"]), "file_count": len(expected_files),
+            "preserved_hub_files": len(set(base["files"]) - set(staged)),
+            "replaced_hub_files": sorted(base.get("replacements", {})),
+            "release_assets": sorted(asset["name"] for asset in release()["assets"]),
+            "file_sha256": expected_hashes, "auth": auth,
+            "hub_main_published": False, "hub_tag_created": False,
+        }
+        PROPOSAL_FILE.write_text(json.dumps(proposal, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        verify_revision(api, item, pr_revision, oid, expected_files, expected_hashes, token)
+        require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == main_before,
+                "Hub main moved during proposal verification")
+        try:
+            api.repo_info(repo, repo_type=repo_type, revision=tag)
+        except RevisionNotFoundError:
+            pass
+        else:
+            require(False, "Hub release tag appeared during proposal verification")
+        proposal["state"] = "PENDING_HUB_PR_REVIEW"
+        PROPOSAL_FILE.write_text(json.dumps(proposal, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"::notice::Hub PR {pr_url} verified as proposal; review and merge required before release")
+        return proposal["state"]
     verify_revision(api, item, tag, oid, expected_files, expected_hashes, token)
     require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == (main_before if prior else oid),
             "Hub main moved during release publication or verification")
@@ -389,9 +424,13 @@ def publish() -> None:
         receipt["source_receipt_sha256"] = sha256(PRIOR_RECEIPT_FILE)
     RECEIPT_FILE.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(receipt, indent=2, sort_keys=True))
+    return receipt["state"]
 
 
 if __name__ == "__main__":
     commands = {"stage": stage, "assets": assets, "preflight": preflight, "publish": publish}
     require(len(sys.argv) == 2 and sys.argv[1] in commands, "expected stage, assets, preflight, or publish")
-    commands[sys.argv[1]]()
+    result = commands[sys.argv[1]]()
+    if result == "PENDING_HUB_PR_REVIEW":
+        # A proposed Hub PR is intentionally not a completed release.
+        raise SystemExit(3)

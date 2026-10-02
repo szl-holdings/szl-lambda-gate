@@ -279,7 +279,8 @@ def test_trusted_publisher_identity_is_unchanged() -> None:
     "name: Stage payload",
     "name: Attach release assets",
     "name: Render and validate model card",
-    "uses: actions/upload-artifact@",
+    "name: hf-mirror-proposal-",
+    "name: hf-mirror-receipt-",
 ])
 def test_steps_without_hub_calls_blank_the_token(marker: str) -> None:
     assert "\n          HF_TOKEN: ''\n" in step(workflow(), "release-mirror", marker) + "\n"
@@ -287,10 +288,23 @@ def test_steps_without_hub_calls_blank_the_token(marker: str) -> None:
 
 @pytest.mark.parametrize("marker", [
     "name: Capture Hub baseline and check preservation",
-    "name: Publish, bind tag, verify bytes, and emit receipt",
+    "name: Propose Hub PR or verify existing release",
 ])
 def test_hub_steps_keep_the_resolved_token(marker: str) -> None:
     assert "HF_TOKEN" not in step(workflow(), "release-mirror", marker)
+
+
+def test_proposal_and_measured_receipt_artifacts_are_separate() -> None:
+    text = workflow()
+    assert 'select(.hub_pr_required != true)' in step(text, "plan", "id: load")
+    assert '"hub_pr_required": true' in CONFIG.read_text(encoding="utf-8")
+    proposal = step(text, "release-mirror", "name: hf-mirror-proposal-")
+    receipt = step(text, "release-mirror", "name: hf-mirror-receipt-")
+    assert "if: always() && inputs.receipt_run == ''" in proposal
+    assert "path: hf-mirror-proposal.json" in proposal
+    assert "if: always() && inputs.receipt_run != ''" in receipt
+    assert "path: hf-mirror-receipt.json" in receipt
+    assert "HF_TOKEN: ''" in proposal and "HF_TOKEN: ''" in receipt
 
 
 def test_first_tokenless_step_fails_closed_if_blanking_regresses() -> None:

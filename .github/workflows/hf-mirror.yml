@@ -2,16 +2,19 @@ name: hf-mirror
 
 # SZL Holdings - GitHub -> Hugging Face mirror, release lane only.
 #
-#   release published -> dispatch on main -> hf upload + HfApi.create_tag
+#   release published -> dispatch on main -> verified Hub PR proposal
 #   push to main      -> plan only (validates .github/hf-mirror.json; no Hub access)
 #
 # The former push lane (huggingface/hub-sync) is removed: hub-sync propagates
 # deletions, and a Hub repo that holds artifacts absent from the GitHub tree
 # (Kernel Hub builds, receipts, curated cards) would be stripped. The plan job
 # fails closed if any target sets "mirror_on_push" to anything but false.
-# The release lane uploads additively and verifies retained Hub files byte for
+# The release lane proposes additively and verifies retained Hub files byte for
 # byte. A staged file that differs from its Hub copy fails closed unless the
 # target lists its exact path in replace_hub_paths.
+# A proposed Hub PR exits pending (code 3); a proposal is never a Hub
+# publication or a release tag. Owner review and a separate finalization gate
+# are required after the Hub PR is merged.
 # A published release dispatches the publisher on main so a branch-bound
 # Trusted Publisher can attest the workflow identity.
 #
@@ -81,7 +84,7 @@ jobs:
         env:
           HF_TOKEN: ''
         run: python3 scripts/wait_release_sbom.py --timeout-seconds 900
-      - name: Dispatch reviewed publisher on main
+      - name: Dispatch reviewed Hub proposal on main
         run: |
           set -euo pipefail
           payload=$(jq -n --arg ref "$DEFAULT_BRANCH" --arg tag "$RELEASE_TAG" \
@@ -91,7 +94,7 @@ jobs:
             --input - <<<"$payload")
           run_id=$(jq -r '.workflow_run_id // empty' <<<"$response")
           [ -n "$run_id" ] || { echo "::error::publisher run ID missing"; exit 1; }
-          echo "publisher run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$run_id"
+          echo "Hub proposal run (release remains pending): https://github.com/$GITHUB_REPOSITORY/actions/runs/$run_id"
           gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
 
   plan:
@@ -121,6 +124,11 @@ jobs:
           missing=$(jq -r '.[] | select((.oidc_resource // "") == "") | .hf_repo_id' <<<"$targets")
           if [ -n "$missing" ]; then
             echo "::error::UNAVAILABLE - oidc_resource missing for: $missing"
+            exit 1
+          fi
+          missing_pr=$(jq -r '.[] | select(.hub_pr_required != true) | .hf_repo_id' <<<"$targets")
+          if [ -n "$missing_pr" ]; then
+            echo "::error::UNAVAILABLE - protected Hub PR policy missing for: $missing_pr"
             exit 1
           fi
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
@@ -320,13 +328,22 @@ jobs:
           CARD_TEMPLATE: ${{ matrix.target.card_template }}
         run: python scripts/render_model_card.py
 
-      - name: Publish, bind tag, verify bytes, and emit receipt
+      - name: Propose Hub PR or verify existing release
         env:
           HF_OIDC_RESOURCE: ''
         run: python scripts/hf_mirror_release.py publish
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        if: always()
+        if: always() && inputs.receipt_run == ''
+        env:
+          HF_TOKEN: ''
+        with:
+          name: hf-mirror-proposal-${{ matrix.target.slug }}-${{ env.RELEASE_TAG }}
+          path: hf-mirror-proposal.json
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        if: always() && inputs.receipt_run != ''
         env:
           HF_TOKEN: ''
         with:
