@@ -58,6 +58,11 @@ on:
         required: false
         default: oidc
         options: [oidc, pat]
+      oidc_write_probe:
+        description: Check OIDC content-write access during an existing-release audit
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -145,6 +150,7 @@ jobs:
           RECEIPT_RUN: ${{ inputs.receipt_run }}
           TARGET_ONLY: ${{ inputs.only }}
           AUTH_MODE: ${{ inputs.auth }}
+          OIDC_WRITE_PROBE: ${{ inputs.oidc_write_probe }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
@@ -156,6 +162,13 @@ jobs:
             [[ "$PROPOSAL_RUN" =~ ^[1-9][0-9]*$ ]] && [ -z "$RECEIPT_RUN" ] &&
               [ -n "$TARGET_ONLY" ] && [ "$AUTH_MODE" = pat ] || {
               echo "::error::finalization requires one target, a proposal run, PAT auth, and no receipt_run"; exit 1;
+            }
+          fi
+          if [ "$OIDC_WRITE_PROBE" = true ]; then
+            [[ "$RECEIPT_RUN" =~ ^[1-9][0-9]*$ ]] && [ -z "$PROPOSAL_RUN" ] &&
+              [ "$TARGET_ONLY" = "SZLHOLDINGS/szl-lambda-gate" ] &&
+              [ "$AUTH_MODE" = oidc ] || {
+              echo "::error::OIDC write probe requires one existing-release receipt, canonical target, and OIDC auth"; exit 1;
             }
           fi
 
@@ -287,6 +300,8 @@ jobs:
 
       - name: Resolve Hub credential (OIDC)
         if: inputs.auth == 'oidc'
+        env:
+          OIDC_WRITE_PROBE: ${{ inputs.oidc_write_probe }}
         run: |
           set -euo pipefail
           echo "oidc_resource=$HF_OIDC_RESOURCE"
@@ -294,6 +309,29 @@ jobs:
           oidc_token=""
           if oidc_token="$(hf auth token 2>"$oidc_error")" && [ -n "$oidc_token" ]; then
             echo "::add-mask::$oidc_token"
+            if [ -z "$HF_RECEIPT_RUN" ] || [ "$OIDC_WRITE_PROBE" = true ]; then
+              HF_TOKEN="$oidc_token" python - <<'PY'
+          import os
+          from huggingface_hub import auth_check
+
+          repo = os.environ["HF_REPO_ID"]
+          token = os.environ["HF_TOKEN"]
+          kind = "repo-scoped" if token.startswith("hf_jwt_") else (
+              "user-scoped" if token.startswith("hf_oauth_") else "unknown"
+          )
+          print(f"OIDC credential format: {kind}")
+          try:
+              auth_check(repo_id=repo, repo_type=os.environ["HF_REPO_TYPE"],
+                         token=os.environ["HF_TOKEN"], write=True)
+          except Exception as exc:
+              status = getattr(getattr(exc, "response", None), "status_code", None)
+              raise SystemExit(
+                  f"UNAVAILABLE - OIDC credential cannot write {repo}: "
+                  f"{type(exc).__name__} HTTP {status}"
+              ) from None
+          print(f"OIDC content-write access verified for {repo}")
+          PY
+            fi
             printf 'HF_TOKEN=%s\n' "$oidc_token" >> "$GITHUB_ENV"
             echo "HF_AUTH_MODE=oidc" >> "$GITHUB_ENV"
           else
