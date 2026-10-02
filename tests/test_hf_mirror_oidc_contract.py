@@ -72,6 +72,12 @@ def test_release_lane_uses_reviewed_code_and_never_moves_hub_tags() -> None:
 def test_release_asset_digest_mismatch_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("RELEASE_TAG", "v0.1.0")
+    monkeypatch.setenv("HF_REPO_ID", "SZLHOLDINGS/szl-lambda-gate")
+    monkeypatch.setenv("HF_REPO_TYPE", "model")
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github" / "hf-mirror.json").write_text(json.dumps({
+        "targets": [{"hf_repo_id": "SZLHOLDINGS/szl-lambda-gate", "repo_type": "model"}],
+    }), encoding="utf-8")
     mirror.STAGE.mkdir()
     mirror.ASSETS_DIR.mkdir()
     (mirror.ASSETS_DIR / "receipt.json").write_bytes(b"different")

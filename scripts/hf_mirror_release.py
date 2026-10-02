@@ -46,6 +46,15 @@ def target() -> dict:
     require(len(matching) == 1, "exactly one target must match HF_REPO_ID")
     item = matching[0]
     require(item["repo_type"] == os.environ["HF_REPO_TYPE"], "target repository type mismatch")
+    required_assets = item.get("required_release_assets", [])
+    require(isinstance(required_assets, list), "required_release_assets must be a list")
+    names: set[str] = set()
+    for name in required_assets:
+        require(isinstance(name, str), "required_release_assets entries must be filenames")
+        require(":" not in name and "\x00" not in name and safe_relative(name).name == name,
+                f"unsafe required release asset: {name!r}")
+        require(name not in names, f"duplicate required release asset: {name!r}")
+        names.add(name)
     return item
 
 
@@ -89,12 +98,20 @@ def stage() -> None:
 
 
 def assets() -> None:
+    item = target()
     expected = release()["assets"]
     names: set[str] = set()
     for asset in expected:
         name = asset["name"]
         require(safe_relative(name).name == name and name not in names, f"unsafe or duplicate asset: {name!r}")
         names.add(name)
+    # Historical verification replays the original asset set bound by its receipt.
+    # New publication must have every required asset before staging any copies.
+    if not os.environ.get("HF_RECEIPT_RUN"):
+        missing = set(item.get("required_release_assets", [])) - names
+        require(not missing, f"required release assets missing: {', '.join(sorted(missing))}")
+    for asset in expected:
+        name = asset["name"]
         digest = asset.get("digest") or ""
         require(re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is not None, f"asset digest missing: {name}")
         source = ASSETS_DIR / name

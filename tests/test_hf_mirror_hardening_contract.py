@@ -90,6 +90,8 @@ def test_lambda_gate_replacements_are_exact_reviewed_source_paths() -> None:
     item = targets[0]
     assert item["hf_repo_id"] == REPO_ID
     assert item["replace_hub_paths"] == [
+        "pyproject.toml",
+        "scripts/hf_mirror_release.py",
         "scripts/render_model_card.py",
         "torch-ext/szl_lambda_gate/__init__.py",
         "torch-ext/szl_lambda_gate/_lambda.py",
@@ -97,11 +99,12 @@ def test_lambda_gate_replacements_are_exact_reviewed_source_paths() -> None:
         "szl-lambda-gate-sbom-2.spdx.json",
         "szl-lambda-gate-sbom.cyclonedx.json",
     ]
-    assert all((ROOT / path).is_file() for path in item["replace_hub_paths"][:4])
+    assert all((ROOT / path).is_file() for path in item["replace_hub_paths"][:6])
     # SBOMs are digest-verified GitHub release assets, not source-tree files.
-    assert item["replace_hub_paths"][4:] == [
+    assert item["replace_hub_paths"][6:] == [
         "szl-lambda-gate-sbom-2.spdx.json", "szl-lambda-gate-sbom.cyclonedx.json",
     ]
+    assert item["required_release_assets"] == item["replace_hub_paths"][6:]
     with pytest.raises(RuntimeError, match="collision differs: build.toml"):
         mirror.collision_plan({"build.toml": "new"}, {"build.toml": "old"}, item)
 
