@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Exercise historical release verification without a Hub client or network.
+"""Exercise historical verification and protected Hub proposals offline.
 
 The mock holds separate immutable baseline, release, and advanced-main trees.
-Every mutating Hub API raises, so a successful test also proves that witnessing
-an old tag does not republish its payload or move an existing reference.
+Historical verification rejects every write. New release tests permit only an
+explicit Hub PR proposal and keep main, tags, and measured receipts untouched.
 """
 from __future__ import annotations
 
@@ -34,6 +34,9 @@ RELEASE_SHA = "3" * 40
 MAIN_SHA = "4" * 40
 WORKFLOW_SHA = "5" * 40
 OTHER_SHA = "6" * 40
+PR_SHA = "8" * 40
+PR_REF = "refs/pr/17"
+PR_URL = f"https://huggingface.co/{HUB_REPO}/discussions/17"
 METADATA = {
     "library_name": "kernels", "license": "apache-2.0",
     "tags": ["doi:10.5281/zenodo.19944926"],
@@ -49,7 +52,7 @@ def digest(data: bytes) -> str:
 
 
 class HistoricalHub:
-    """Revision-aware Hub API stand-in; write attempts are always failures."""
+    """Revision-aware Hub stand-in; only an explicit test can propose a PR."""
 
     def __init__(self, store: Path, trees: dict[str, dict[str, bytes]]) -> None:
         self.store = store
@@ -63,6 +66,9 @@ class HistoricalHub:
         self.tag_answers: list[str] = []
         self.refs_denied = False
         self.tag_error: Exception | None = None
+        self.allow_proposal = False
+        self.proposal_error: Exception | None = None
+        self.corrupt_pr_file: str | None = None
 
     def repo_info(self, repo: str, *, repo_type: str, revision: str) -> types.SimpleNamespace:
         assert (repo, repo_type) == (HUB_REPO, "model")
@@ -75,13 +81,15 @@ class HistoricalHub:
             if not self.tag_exists:
                 raise RevisionNotFoundError("tag does not exist")
             resolved = self.tag_answers.pop(0) if self.tag_answers else self.tag
+        elif revision == PR_REF:
+            resolved = PR_SHA
         else:
             assert revision in self.trees, "unknown immutable revision"
             resolved = revision
         return types.SimpleNamespace(sha=resolved)
 
     def tree(self, revision: str) -> dict[str, bytes]:
-        resolved = self.main if revision == "main" else self.tag if revision == TAG else revision
+        resolved = self.main if revision == "main" else self.tag if revision == TAG else PR_SHA if revision == PR_REF else revision
         return self.trees[resolved]
 
     def list_repo_files(self, repo: str, *, repo_type: str, revision: str) -> list[str]:
@@ -106,8 +114,23 @@ class HistoricalHub:
         self.mutations.append(operation)
         raise AssertionError(f"historical verification attempted {operation}")
 
-    def upload_folder(self, *args: object, **kwargs: object) -> None:
-        self.reject_write("upload_folder")
+    def upload_folder(self, *args: object, **kwargs: object) -> types.SimpleNamespace:
+        if not self.allow_proposal:
+            self.reject_write("upload_folder")
+        assert kwargs["repo_id"] == HUB_REPO and kwargs["repo_type"] == "model"
+        assert kwargs["token"] == "test-token"
+        assert kwargs["parent_commit"] == MAIN_SHA
+        assert kwargs["create_pr"] is True
+        assert kwargs["folder_path"] == str(mirror.STAGE)
+        self.mutations.append("upload_folder_pr")
+        if self.proposal_error is not None:
+            raise self.proposal_error
+        staged = {path.relative_to(mirror.STAGE).as_posix(): path.read_bytes()
+                  for path in mirror.STAGE.rglob("*") if path.is_file()}
+        self.trees[PR_SHA] = {**self.trees[MAIN_SHA], **staged}
+        if self.corrupt_pr_file is not None:
+            self.trees[PR_SHA][self.corrupt_pr_file] += b"tampered\n"
+        return types.SimpleNamespace(oid=PR_SHA, pr_url=PR_URL, pr_revision=PR_REF)
 
     def create_tag(self, *args: object, **kwargs: object) -> None:
         self.reject_write("create_tag")
@@ -135,6 +158,7 @@ def historical(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> types.SimpleN
 
     item = {
         "hf_repo_id": HUB_REPO, "repo_type": "model", "oidc_resource": HUB_REPO,
+        "hub_pr_required": True,
         "preserve_hub_card": True, "required_card_metadata": {
             "library_name": "kernels", "license": "apache-2.0",
         },
@@ -331,17 +355,69 @@ def test_gated_refs_endpoint_is_not_needed_to_verify_existing_tag(
     assert historical.hub.mutations == []
 
 
-def test_gated_refs_endpoint_does_not_block_new_tag_publication(
+def test_gated_refs_endpoint_does_not_block_protected_hub_pr_proposal(
     historical: types.SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("HF_RECEIPT_RUN")
     historical.hub.tag_exists = False
     prepare(historical)
     historical.hub.refs_denied = True
-    with pytest.raises(AssertionError, match="attempted upload_folder"):
-        mirror.publish()
-    assert historical.hub.mutations == ["upload_folder"]
+    historical.hub.allow_proposal = True
+    assert mirror.publish() == "PENDING_HUB_PR_REVIEW"
+    proposal = json.loads(mirror.PROPOSAL_FILE.read_text(encoding="utf-8"))
+    assert proposal["state"] == "PENDING_HUB_PR_REVIEW"
+    assert proposal["hf_pr_url"] == PR_URL and proposal["hf_pr_revision"] == PR_REF
+    assert proposal["hf_pr_commit"] == PR_SHA
+    assert proposal["hf_main_before"] == MAIN_SHA
+    assert proposal["file_sha256"] == {name: digest(data) for name, data in historical.hub.trees[PR_SHA].items()}
+    assert proposal["hub_main_published"] is False and proposal["hub_tag_created"] is False
+    assert historical.hub.mutations == ["upload_folder_pr"]
+    assert historical.hub.main == MAIN_SHA and historical.hub.tag_exists is False
     assert not mirror.RECEIPT_FILE.exists()
+
+
+def test_new_release_refuses_direct_upload_without_explicit_hub_pr_policy(
+    historical: types.SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HF_RECEIPT_RUN")
+    historical.hub.tag_exists = False
+    historical.item.pop("hub_pr_required")
+    (Path(".github") / "hf-mirror.json").write_text(
+        json.dumps({"targets": [historical.item]}), encoding="utf-8")
+    prepare(historical)
+    with pytest.raises(RuntimeError, match="Hub PR publication policy is required"):
+        mirror.publish()
+    assert_no_publication(historical)
+
+
+def test_unverified_hub_proposal_cannot_emit_publication_receipt(
+    historical: types.SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HF_RECEIPT_RUN")
+    historical.hub.tag_exists = False
+    prepare(historical)
+    historical.hub.allow_proposal = True
+    historical.hub.corrupt_pr_file = "lambda_gate.py"
+    with pytest.raises(RuntimeError, match="byte mismatch: lambda_gate.py"):
+        mirror.publish()
+    assert json.loads(mirror.PROPOSAL_FILE.read_text(encoding="utf-8"))["state"] == "PENDING_HUB_PR_UNVERIFIED"
+    assert historical.hub.main == MAIN_SHA and historical.hub.tag_exists is False
+    assert not mirror.RECEIPT_FILE.exists()
+
+
+def test_hub_pr_api_failure_cannot_fall_back_to_direct_main_commit(
+    historical: types.SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HF_RECEIPT_RUN")
+    historical.hub.tag_exists = False
+    prepare(historical)
+    historical.hub.allow_proposal = True
+    historical.hub.proposal_error = PermissionError("Hub PR denied")
+    with pytest.raises(PermissionError, match="Hub PR denied"):
+        mirror.publish()
+    assert historical.hub.mutations == ["upload_folder_pr"]
+    assert historical.hub.main == MAIN_SHA and historical.hub.tag_exists is False
+    assert not mirror.PROPOSAL_FILE.exists() and not mirror.RECEIPT_FILE.exists()
 
 
 def test_tag_lookup_denial_fails_before_upload(

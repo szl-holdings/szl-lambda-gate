@@ -56,7 +56,7 @@ def test_release_auth_labels_explicit_mode(monkeypatch: pytest.MonkeyPatch) -> N
         mirror.release_auth(item)
 
 
-def test_release_lane_uses_reviewed_code_and_never_moves_hub_tags() -> None:
+def test_release_lane_uses_reviewed_code_and_only_proposes_new_hub_releases() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     publisher = Path(mirror.__file__).read_text(encoding="utf-8")
 
@@ -64,9 +64,10 @@ def test_release_lane_uses_reviewed_code_and_never_moves_hub_tags() -> None:
     assert "ref: refs/tags/${{ inputs.tag }}" in workflow
     assert "SOURCE_GITHUB_SHA=$source_sha" in workflow
     assert "api.delete_tag" not in publisher
-    assert "exist_ok=False" in publisher
+    assert "api.create_tag" not in publisher
     assert "parent_commit=base[\"sha\"]" in publisher
-    assert "revision=oid" in publisher
+    assert "create_pr=True" in publisher
+    assert '"state": "PENDING_HUB_PR_UNVERIFIED"' in publisher
 
 
 def test_release_asset_digest_mismatch_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
