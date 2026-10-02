@@ -13,6 +13,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+MERGE_WORKFLOW = ROOT / ".github" / "workflows" / "hf-hub-pr-merge.yml"
 sys.path.insert(0, str(ROOT / "scripts"))
 spec = importlib.util.spec_from_file_location(
     "hf_mirror_finalize_test", ROOT / "scripts" / "hf_mirror_finalize.py",
@@ -32,6 +33,7 @@ WORKFLOW_SHA = "5" * 40
 FINALIZER_SHA = "6" * 40
 OTHER_SHA = "7" * 40
 PR_NUMBER = 17
+PR_REF = f"refs/pr/{PR_NUMBER}"
 RUN_ID = "123456789"
 METADATA = {
     "library_name": "kernels", "license": "apache-2.0",
@@ -62,6 +64,9 @@ class Hub:
         self.target_branch = "refs/heads/main"
         self.merge_commit_oid = MERGE_SHA
         self.events = [types.SimpleNamespace(oid=PROPOSAL_SHA)]
+        self.pr_head = PROPOSAL_SHA
+        self.move_pr_on_open = False
+        self.merge_error: Exception | None = None
 
     def repo_info(self, repo: str, *, repo_type: str, revision: str) -> types.SimpleNamespace:
         assert (repo, repo_type) == (HUB_REPO, "model")
@@ -71,8 +76,8 @@ class Hub:
             if self.tag is None:
                 raise RevisionNotFoundError("missing tag")
             return types.SimpleNamespace(sha=self.tag_answers.pop(0) if self.tag_answers else self.tag)
-        assert revision in (BASELINE_SHA, MERGE_SHA)
-        return types.SimpleNamespace(sha=revision)
+        assert revision in (BASELINE_SHA, MERGE_SHA, PR_REF)
+        return types.SimpleNamespace(sha=self.pr_head if revision == PR_REF else revision)
 
     def get_discussion_details(self, repo: str, discussion_num: int, *, repo_type: str) -> types.SimpleNamespace:
         assert (repo, repo_type, discussion_num) == (HUB_REPO, "model", PR_NUMBER)
@@ -80,20 +85,44 @@ class Hub:
             num=PR_NUMBER, repo_id=HUB_REPO, repo_type="model",
             status=self.status, is_pull_request=self.is_pull_request,
             target_branch=self.target_branch, merge_commit_oid=self.merge_commit_oid,
-            events=self.events,
+            events=self.events, conflicting_files=[],
         )
 
     def list_repo_files(self, repo: str, *, repo_type: str, revision: str) -> list[str]:
         assert (repo, repo_type) == (HUB_REPO, "model")
-        assert revision in ("main", BASELINE_SHA, MERGE_SHA, TAG)
-        return sorted(self.before if revision == BASELINE_SHA else self.files)
+        assert revision in ("main", BASELINE_SHA, MERGE_SHA, TAG, PR_REF)
+        return sorted(self.before if revision == BASELINE_SHA or revision == "main" and self.main == BASELINE_SHA else self.files)
 
     def download(self, repo: str, name: str, *, repo_type: str, revision: str, token: str) -> str:
         assert (repo, repo_type, token) == (HUB_REPO, "model", "test-token")
         path = self.store / revision / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes((self.before if revision == BASELINE_SHA else self.files)[name])
+        path.write_bytes((self.before if revision == BASELINE_SHA or revision == "main" and self.main == BASELINE_SHA else self.files)[name])
         return str(path)
+
+    def change_discussion_status(self, repo: str, discussion_num: int, new_status: str,
+                                 *, repo_type: str, token: str) -> None:
+        assert (repo, discussion_num, new_status, repo_type, token) == (
+            HUB_REPO, PR_NUMBER, "open", "model", "test-token",
+        )
+        assert self.status == "draft"
+        self.status = "open"
+        self.mutations.append(("open_pr", PROPOSAL_SHA))
+        if self.move_pr_on_open:
+            self.pr_head = OTHER_SHA
+
+    def merge_pull_request(self, repo: str, discussion_num: int,
+                           *, repo_type: str, token: str) -> None:
+        assert (repo, discussion_num, repo_type, token) == (
+            HUB_REPO, PR_NUMBER, "model", "test-token",
+        )
+        assert self.status == "open" and self.main == BASELINE_SHA
+        if self.merge_error is not None:
+            raise self.merge_error
+        self.status = "merged"
+        self.main = MERGE_SHA
+        self.merge_commit_oid = MERGE_SHA
+        self.mutations.append(("merge_pr", MERGE_SHA))
 
     def create_tag(self, repo: str, *, tag: str, repo_type: str, revision: str, token: str,
                    exist_ok: bool) -> None:
@@ -282,3 +311,106 @@ def test_tag_movement_during_readback_emits_no_receipt(setup: types.SimpleNamesp
     with pytest.raises(RuntimeError, match="moved during verification"):
         finalizer.finalize()
     assert not finalizer.mirror.RECEIPT_FILE.exists()
+
+
+def pending(setup: types.SimpleNamespace) -> None:
+    setup.hub.main = BASELINE_SHA
+    setup.hub.status = "draft"
+    setup.hub.merge_commit_oid = None
+
+
+def test_verified_draft_merges_with_separate_receipt(setup: types.SimpleNamespace) -> None:
+    pending(setup)
+    assert finalizer.merge_proposal() == "MERGED_HUB_PR_VERIFIED"
+    assert setup.hub.mutations == [("open_pr", PROPOSAL_SHA), ("merge_pr", MERGE_SHA)]
+    assert setup.hub.tag is None and not finalizer.mirror.RECEIPT_FILE.exists()
+    receipt = json.loads(finalizer.MERGE_RECEIPT_FILE.read_text(encoding="utf-8"))
+    assert receipt["source_proposal_run"] == RUN_ID
+    assert receipt["source_proposal_sha256"] == digest(finalizer.PROPOSAL_FILE.read_bytes())
+    assert receipt["hf_main_before"] == BASELINE_SHA
+    assert receipt["hf_revision"] == MERGE_SHA
+    assert receipt["file_sha256"] == setup.proposal["file_sha256"]
+
+
+def test_merged_pr_retry_verifies_without_new_write(setup: types.SimpleNamespace) -> None:
+    assert finalizer.merge_proposal() == "MERGED_HUB_PR_VERIFIED"
+    assert setup.hub.mutations == []
+
+
+def test_open_pr_merges_without_reopening(setup: types.SimpleNamespace) -> None:
+    pending(setup)
+    setup.hub.status = "open"
+    assert finalizer.merge_proposal() == "MERGED_HUB_PR_VERIFIED"
+    assert setup.hub.mutations == [("merge_pr", MERGE_SHA)]
+
+
+def test_unverified_proposal_cannot_merge(setup: types.SimpleNamespace) -> None:
+    pending(setup)
+    setup.proposal["state"] = "PENDING_HUB_PR_UNVERIFIED"
+    finalizer.PROPOSAL_FILE.write_text(json.dumps(setup.proposal), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="proposal state mismatch"):
+        finalizer.merge_proposal()
+    assert setup.hub.mutations == []
+
+
+def test_changed_pr_byte_blocks_merge(setup: types.SimpleNamespace) -> None:
+    pending(setup)
+    setup.hub.files["kernel.py"] += b"changed\n"
+    with pytest.raises(RuntimeError, match="byte mismatch: kernel.py"):
+        finalizer.merge_proposal()
+    assert setup.hub.mutations == []
+    assert not finalizer.MERGE_RECEIPT_FILE.exists()
+
+
+def test_main_drift_blocks_merge(setup: types.SimpleNamespace) -> None:
+    pending(setup)
+    setup.hub.main = OTHER_SHA
+    with pytest.raises(RuntimeError, match="Hub main differs from proposal baseline"):
+        finalizer.merge_proposal()
+    assert setup.hub.mutations == []
+    assert not finalizer.MERGE_RECEIPT_FILE.exists()
+
+
+def test_existing_tag_blocks_merge(setup: types.SimpleNamespace) -> None:
+    pending(setup)
+    setup.hub.tag = OTHER_SHA
+    with pytest.raises(RuntimeError, match="Hub release tag already exists"):
+        finalizer.merge_proposal()
+    assert setup.hub.mutations == []
+    assert not finalizer.MERGE_RECEIPT_FILE.exists()
+
+
+def test_pr_head_movement_after_open_blocks_merge(setup: types.SimpleNamespace) -> None:
+    pending(setup)
+    setup.hub.move_pr_on_open = True
+    with pytest.raises(RuntimeError, match="PR head moved before merge"):
+        finalizer.merge_proposal()
+    assert setup.hub.mutations == [("open_pr", PROPOSAL_SHA)]
+    assert setup.hub.main == BASELINE_SHA
+    assert not finalizer.MERGE_RECEIPT_FILE.exists()
+
+
+def test_protected_hub_denial_does_not_emit_merge_receipt(setup: types.SimpleNamespace) -> None:
+    pending(setup)
+    setup.hub.merge_error = PermissionError("protected merge denied")
+    with pytest.raises(PermissionError, match="protected merge denied"):
+        finalizer.merge_proposal()
+    assert setup.hub.main == BASELINE_SHA
+    assert not finalizer.MERGE_RECEIPT_FILE.exists()
+
+
+def test_owner_merge_workflow_is_manual_and_separate_from_finalization() -> None:
+    workflow = MERGE_WORKFLOW.read_text(encoding="utf-8")
+    assert workflow.startswith("name: hf-hub-pr-merge\n")
+    assert "  workflow_dispatch:" in workflow
+    assert "\n  push:" not in workflow and "\n  release:" not in workflow
+    assert "hf-mirror-${{ github.ref }}" in workflow
+    assert 'test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"' in workflow
+    assert 'test "$HF_REPO_ID" = "SZLHOLDINGS/szl-lambda-gate"' in workflow
+    assert 'git merge-base --is-ancestor "$source_sha" HEAD' in workflow
+    assert 'git merge-base --is-ancestor "$proposal_sha" HEAD' in workflow
+    assert 'HF_FALLBACK_TOKEN: ${{ secrets.HF_TOKEN }}' in workflow
+    assert "auth_check(repo_id=repo" in workflow and "write=True" in workflow
+    assert "python scripts/hf_mirror_finalize.py merge" in workflow
+    assert "path: hf-mirror-merge.json" in workflow
+    assert "hf-mirror-receipt.json" not in workflow
