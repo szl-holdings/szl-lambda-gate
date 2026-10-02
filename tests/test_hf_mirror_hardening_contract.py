@@ -242,8 +242,12 @@ def test_hub_sync_lane_and_its_secret_binding_are_gone() -> None:
     assert "\n  sync:" not in text
     assert "push_targets" not in text
     assert "hf_token:" not in text
-    assert text.count("secrets.HF_TOKEN") == 1
+    assert text.count("secrets.HF_TOKEN") == 2
     assert "HF_FALLBACK_TOKEN: ${{ secrets.HF_TOKEN }}" in step(text, "release-mirror", "Resolve Hub credential (PAT)")
+    assert "HF_FALLBACK_TOKEN: ${{ secrets.HF_TOKEN }}" in step(text, "finalize-mirror", "Resolve owner Hub credential")
+    for job in ("release-mirror", "finalize-mirror"):
+        credential_steps = [item for item in job_steps(text, job) if "secrets.HF_TOKEN" in item]
+        assert len(credential_steps) == 1
 
 
 def test_plan_fails_closed_if_a_target_re_enables_push_mirroring() -> None:
@@ -267,9 +271,14 @@ def test_trusted_publisher_identity_is_unchanged() -> None:
     assert "\npermissions:\n  contents: read\n" in text
     assert "\n  release-mirror:\n    needs: plan\n" in text
     assert "actions/workflows/hf-mirror.yml/dispatches" in text
-    mirror_job = text[text.index("\n  release-mirror:\n"):]
+    mirror_job = text[text.index("\n  release-mirror:\n"):text.index("\n  finalize-mirror:\n")]
     assert "    permissions:\n      contents: read\n      id-token: write\n" in mirror_job
-    assert "if: github.event_name == 'workflow_dispatch' && inputs.tag != '' && github.ref == format(" in mirror_job
+    assert "inputs.tag != '' && inputs.proposal_run == '' && github.ref == format(" in mirror_job
+    finalizer_job = text[text.index("\n  finalize-mirror:\n"):]
+    assert "inputs.proposal_run != '' && inputs.receipt_run == '' && inputs.auth == 'pat'" in finalizer_job
+    assert "github.ref == format('refs/heads/{0}', github.event.repository.default_branch)" in finalizer_job
+    assert "    permissions:\n      contents: read\n      actions: read\n" in finalizer_job
+    assert "id-token: write" not in finalizer_job
 
 
 # --- (c) token exposure -------------------------------------------------------
@@ -320,9 +329,11 @@ def test_first_tokenless_step_fails_closed_if_blanking_regresses() -> None:
 
 def test_huggingface_hub_is_pinned_to_the_proven_version() -> None:
     text = workflow()
-    assert 'python -m pip install --upgrade "huggingface_hub[cli,hf_xet]==2.0.0" pyyaml' in text
+    install = 'python -m pip install --upgrade "huggingface_hub[cli,hf_xet]==2.0.0" pyyaml'
     assert ">=1.32.0" not in text
-    assert len(re.findall(r"huggingface_hub\[", text)) == 1
+    assert len(re.findall(r"huggingface_hub\[", text)) == 2
+    for job in ("release-mirror", "finalize-mirror"):
+        assert install in step(text, job, install)
 
 
 def test_workflow_run_scripts_never_interpolate_expressions() -> None:

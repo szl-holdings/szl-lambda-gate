@@ -371,9 +371,14 @@ def publish() -> str:
             "hf_main_before": base["sha"], "hf_pr_url": pr_url,
             "hf_pr_revision": pr_revision, "hf_pr_commit": oid,
             "file_count_before": len(base["files"]), "file_count": len(expected_files),
+            "staged_files": sorted(staged),
             "preserved_hub_files": len(set(base["files"]) - set(staged)),
             "replaced_hub_files": sorted(base.get("replacements", {})),
             "release_assets": sorted(asset["name"] for asset in release()["assets"]),
+            "release_asset_manifest": sorted(
+                ({"name": asset["name"], "size": asset["size"], "digest": asset["digest"]}
+                 for asset in release()["assets"]), key=lambda asset: asset["name"]
+            ),
             "file_sha256": expected_hashes, "auth": auth,
             "hub_main_published": False, "hub_tag_created": False,
         }
