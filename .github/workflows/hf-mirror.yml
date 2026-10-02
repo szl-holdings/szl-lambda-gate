@@ -3,6 +3,7 @@ name: hf-mirror
 # SZL Holdings - GitHub -> Hugging Face mirror, release lane only.
 #
 #   release published -> dispatch on main -> verified Hub PR proposal
+#   owner merges Hub PR -> manual PAT finalization -> immutable tag + receipt
 #   push to main      -> plan only (validates .github/hf-mirror.json; no Hub access)
 #
 # The former push lane (huggingface/hub-sync) is removed: hub-sync propagates
@@ -13,8 +14,8 @@ name: hf-mirror
 # byte. A staged file that differs from its Hub copy fails closed unless the
 # target lists its exact path in replace_hub_paths.
 # A proposed Hub PR exits pending (code 3); a proposal is never a Hub
-# publication or a release tag. Owner review and a separate finalization gate
-# are required after the Hub PR is merged.
+# publication or a release tag. After owner review and merge, an explicit
+# proposal_run dispatch verifies merged main and finalizes with a PAT.
 # A published release dispatches the publisher on main so a branch-bound
 # Trusted Publisher can attest the workflow identity.
 #
@@ -47,6 +48,9 @@ on:
         required: false
       receipt_run:
         description: Successful publication run ID for read-only verification of an existing Hub tag
+        required: false
+      proposal_run:
+        description: Verified pending Hub PR proposal run ID for post-merge finalization
         required: false
       auth:
         description: Authentication mode for a manual release dispatch
@@ -133,10 +137,31 @@ jobs:
           fi
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
           echo "release targets: $(jq 'length' <<<"$targets"); push lane: removed"
+      - name: Validate manual operation
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          PROPOSAL_RUN: ${{ inputs.proposal_run }}
+          RECEIPT_RUN: ${{ inputs.receipt_run }}
+          TARGET_ONLY: ${{ inputs.only }}
+          AUTH_MODE: ${{ inputs.auth }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          [ -n "$RELEASE_TAG" ] || { echo "::error::release tag required"; exit 1; }
+          [ "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" ] || {
+            echo "::error::manual release operation must run on the default branch"; exit 1;
+          }
+          if [ -n "$PROPOSAL_RUN" ]; then
+            [[ "$PROPOSAL_RUN" =~ ^[1-9][0-9]*$ ]] && [ -z "$RECEIPT_RUN" ] &&
+              [ -n "$TARGET_ONLY" ] && [ "$AUTH_MODE" = pat ] || {
+              echo "::error::finalization requires one target, a proposal run, PAT auth, and no receipt_run"; exit 1;
+            }
+          fi
 
   release-mirror:
     needs: plan
-    if: github.event_name == 'workflow_dispatch' && inputs.tag != '' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.proposal_run == '' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -349,3 +374,119 @@ jobs:
         with:
           name: hf-mirror-receipt-${{ matrix.target.slug }}-${{ env.RELEASE_TAG }}
           path: hf-mirror-receipt.json
+
+  finalize-mirror:
+    needs: plan
+    if: github.event_name == 'workflow_dispatch' && inputs.proposal_run != '' && inputs.receipt_run == '' && inputs.auth == 'pat' && inputs.only != '' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.plan.outputs.targets) }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      HF_PROPOSAL_RUN: ${{ inputs.proposal_run }}
+      HF_REPO_ID: ${{ matrix.target.hf_repo_id }}
+      HF_REPO_TYPE: ${{ matrix.target.repo_type }}
+      HF_MIRROR_OIDC_RESOURCE: ${{ matrix.target.oidc_resource }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      HF_XET_HIGH_PERFORMANCE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          path: release-source
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade "huggingface_hub[cli,hf_xet]==2.0.0" pyyaml
+      - name: Verify published release and exact source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HF_TOKEN: ''
+        run: |
+          set -euo pipefail
+          git -C release-source show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          source_sha=$(git -C release-source rev-parse "refs/tags/$RELEASE_TAG^{commit}")
+          test "$source_sha" = "$(git -C release-source rev-parse HEAD)" || {
+            echo "::error::release checkout does not match tag"; exit 1;
+          }
+          git merge-base --is-ancestor "$source_sha" HEAD || {
+            echo "::error::release tag is not an ancestor of reviewed main"; exit 1;
+          }
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,assets,url,body > .hfmirror-release.json
+          jq -e --arg tag "$RELEASE_TAG" '.tagName == $tag and .isDraft == false' \
+            .hfmirror-release.json >/dev/null
+          echo "SOURCE_GITHUB_SHA=$source_sha" >> "$GITHUB_ENV"
+      - name: Retrieve verified Hub PR proposal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HF_TOKEN: ''
+          PROPOSAL_NAME: hf-mirror-proposal-${{ matrix.target.slug }}-${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$HF_PROPOSAL_RUN" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::invalid proposal run ID"; exit 1;
+          }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$HF_PROPOSAL_RUN" \
+            > .hfmirror-proposal-run.json
+          jq -e --arg repo "$GITHUB_REPOSITORY" --arg branch "$DEFAULT_BRANCH" \
+            --arg run "$HF_PROPOSAL_RUN" \
+              '(.id | tostring) == $run and .repository.full_name == $repo and
+               .head_repository.full_name == $repo and .head_branch == $branch and
+               .path == ".github/workflows/hf-mirror.yml" and
+               .event == "workflow_dispatch" and .conclusion == "failure" and
+               (.head_sha | test("^[0-9a-f]{40}$"))' \
+            .hfmirror-proposal-run.json >/dev/null
+          proposal_sha=$(jq -r '.head_sha' .hfmirror-proposal-run.json)
+          git merge-base --is-ancestor "$proposal_sha" HEAD || {
+            echo "::error::proposal workflow commit is not an ancestor of reviewed main"; exit 1;
+          }
+          gh run download "$HF_PROPOSAL_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "$PROPOSAL_NAME" --dir .hfmirror-proposal
+          test -f .hfmirror-proposal/hf-mirror-proposal.json
+          mv .hfmirror-proposal/hf-mirror-proposal.json .hfmirror-proposal.json
+      - name: Resolve owner Hub credential
+        env:
+          HF_FALLBACK_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_FALLBACK_TOKEN:-}" ]; then
+            echo "::error::UNAVAILABLE - HF_TOKEN repository secret is absent"
+            exit 1
+          fi
+          echo "::add-mask::$HF_FALLBACK_TOKEN"
+          python - <<'PY'
+          import os
+          from huggingface_hub import auth_check
+
+          repo = os.environ["HF_REPO_ID"]
+          try:
+              auth_check(repo_id=repo, repo_type=os.environ["HF_REPO_TYPE"],
+                         token=os.environ["HF_FALLBACK_TOKEN"], write=True)
+          except Exception as exc:
+              raise SystemExit(f"UNAVAILABLE - repository secret cannot write {repo}: {type(exc).__name__}") from None
+          print(f"repository secret write access verified for {repo}")
+          PY
+          printf 'HF_TOKEN=%s\n' "$HF_FALLBACK_TOKEN" >> "$GITHUB_ENV"
+          echo "HF_AUTH_MODE=pat" >> "$GITHUB_ENV"
+      - name: Verify merged Hub PR, create immutable tag, and read back receipt
+        env:
+          HF_OIDC_RESOURCE: ''
+        run: python scripts/hf_mirror_finalize.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        env:
+          HF_TOKEN: ''
+        with:
+          name: hf-mirror-receipt-${{ matrix.target.slug }}-${{ env.RELEASE_TAG }}
+          path: hf-mirror-receipt.json
+          if-no-files-found: error

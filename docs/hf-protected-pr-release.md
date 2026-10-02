@@ -28,18 +28,36 @@ stable PR head before recording `PENDING_HUB_PR_REVIEW` in
 
 A proposal exits with code 3, so the workflow cannot be mistaken for a green
 release. The proposal artifact records the source commit, workflow commit,
-Hub baseline, PR URL and revision, proposed commit, expected file hashes,
-reviewed replacements, and release assets. If verification fails after a PR is
-created, the artifact instead remains `PENDING_HUB_PR_UNVERIFIED`. The workflow
+Hub baseline, PR URL and revision, proposed commit, staged file list, expected
+file hashes, reviewed replacements, and release asset names, sizes, and digests.
+If verification fails after a PR is created, the artifact instead remains
+`PENDING_HUB_PR_UNVERIFIED`. The workflow
 never creates a tag or a `MEASURED` receipt for a proposal.
 
-The Hub PR needs owner review and a protected merge. After merge, a separate
-finalization implementation must bind the merged Hub main to the proposal and
-source bytes, create the immutable release tag, and read back the tag and all
-files before it can emit a `MEASURED` publication receipt. That finalization
-is outside this proposal change. Re-running the new-release dispatch can
-create another Hub PR, so use the retained proposal artifact to reconcile an
-existing proposal before any retry.
+The Hub PR needs owner review and a protected merge. After the merge, dispatch
+`hf-mirror.yml` on GitHub `main` with `tag=<release tag>`,
+`only=SZLHOLDINGS/szl-lambda-gate`, `proposal_run=<verified proposal run ID>`,
+and `auth=pat`. The owner must provide a write-capable `HF_TOKEN` repository
+secret for this explicit finalization run; the workflow checks write access
+before calling the Hub. It accepts only a failed proposal run from the same
+GitHub repository, workflow, and branch whose artifact has
+`PENDING_HUB_PR_REVIEW`. The proposal workflow commit and release source tag
+must both be ancestors of the reviewed GitHub main commit.
+
+Finalization requires the Hub PR to be merged into `main`, with its recorded
+proposal commit in the PR events and current Hub main at the PR merge commit.
+It reconstructs the additive file set from the baseline and proposal artifact,
+checks the reviewed replacements and preserved files, then independently reads
+back every merged Hub file and its SHA-256. Only then does it create the release
+tag if absent. An existing tag must already point to the same merge commit;
+the workflow never moves it. It rechecks all tag bytes and current main before
+uploading a `MEASURED` publication receipt bound to the proposal artifact and
+run ID. A retry after tag creation is safe if the tag and merged main still
+match. A failure produces no measured receipt. Remove the temporary `HF_TOKEN`
+secret once finalization and a read-only OIDC audit have succeeded.
+
+Re-running the new-release dispatch can create another Hub PR, so use the
+retained proposal artifact to reconcile an existing proposal before any retry.
 
 The `receipt_run` workflow input still performs read-only verification of a
 successful historical publication receipt. A pending proposal run cannot be

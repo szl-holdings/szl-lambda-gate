@@ -370,6 +370,11 @@ def test_gated_refs_endpoint_does_not_block_protected_hub_pr_proposal(
     assert proposal["hf_pr_commit"] == PR_SHA
     assert proposal["hf_main_before"] == MAIN_SHA
     assert proposal["file_sha256"] == {name: digest(data) for name, data in historical.hub.trees[PR_SHA].items()}
+    assert proposal["staged_files"] == sorted(historical.staged)
+    assert proposal["release_asset_manifest"] == [{
+        "name": "bom.json", "size": len(historical.staged["bom.json"]),
+        "digest": "sha256:" + digest(historical.staged["bom.json"]),
+    }]
     assert proposal["hub_main_published"] is False and proposal["hub_tag_created"] is False
     assert historical.hub.mutations == ["upload_folder_pr"]
     assert historical.hub.main == MAIN_SHA and historical.hub.tag_exists is False
