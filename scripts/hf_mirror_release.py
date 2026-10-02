@@ -21,6 +21,8 @@ BASELINE_FILE = BASELINE_DIR / "evidence.json"
 RELEASE_FILE = Path(".hfmirror-release.json")
 ASSETS_DIR = Path(".hfmirror-assets")
 RECEIPT_FILE = Path("hf-mirror-receipt.json")
+PRIOR_RECEIPT_FILE = Path(".hfmirror-prior/hf-mirror-receipt.json")
+PRIOR_RUN_FILE = Path(".hfmirror-prior/run.json")
 BEGIN = "<!-- SZL-HF-MIRROR:START -->"
 END = "<!-- SZL-HF-MIRROR:END -->"
 
@@ -146,6 +148,40 @@ def assert_metadata(card: ModelCard, item: dict) -> dict:
     return metadata
 
 
+def prior_receipt(item: dict) -> dict:
+    """Bind a retained publication receipt to this exact release and target."""
+    require(re.fullmatch(r"[1-9][0-9]*", os.environ.get("HF_RECEIPT_RUN", "")) is not None,
+            "historical verification requires a successful publisher run ID")
+    data = json.loads(PRIOR_RECEIPT_FILE.read_text(encoding="utf-8"))
+    run = json.loads(PRIOR_RUN_FILE.read_text(encoding="utf-8"))
+    require(str(run.get("id")) == os.environ["HF_RECEIPT_RUN"], "prior publisher run ID mismatch")
+    require(run.get("repository", {}).get("full_name") == os.environ["GITHUB_REPOSITORY"]
+            and run.get("head_repository", {}).get("full_name") == os.environ["GITHUB_REPOSITORY"],
+            "prior publisher run repository mismatch")
+    require(run.get("path") == ".github/workflows/hf-mirror.yml"
+            and run.get("event") == "workflow_dispatch" and run.get("conclusion") == "success",
+            "prior publisher run identity or outcome mismatch")
+    require(re.fullmatch(r"[0-9a-f]{40}", run.get("head_sha", "")) is not None
+            and data.get("github_workflow_sha") == run["head_sha"],
+            "prior receipt workflow commit differs from publisher run")
+    expected = {
+        "state": "MEASURED", "github_repo": os.environ["GITHUB_REPOSITORY"],
+        "github_sha": os.environ["SOURCE_GITHUB_SHA"], "github_tag": os.environ["RELEASE_TAG"],
+        "hf_repo_id": os.environ["HF_REPO_ID"], "hf_repo_type": os.environ["HF_REPO_TYPE"],
+        "hf_oidc_resource": item["oidc_resource"],
+    }
+    for key, value in expected.items():
+        require(data.get(key) == value, f"prior publication receipt {key} mismatch")
+    require(data.get("operation", "publish") == "publish", "prior receipt must record publication")
+    require(data.get("auth") in ("pat", "oidc"), "prior publication authentication missing")
+    for key in ("hf_main_before", "hf_revision"):
+        require(re.fullmatch(r"[0-9a-f]{40}", data.get(key, "")) is not None,
+                f"prior publication receipt {key} invalid")
+    require(data.get("release_assets") == sorted(asset["name"] for asset in release()["assets"]),
+            "prior publication release asset set mismatch")
+    return data
+
+
 def preflight() -> None:
     from huggingface_hub import HfApi, ModelCard
 
@@ -156,6 +192,15 @@ def preflight() -> None:
     api = HfApi(token=token)
     info = api.repo_info(repo, repo_type=repo_type, revision="main")
     require(bool(info.sha), "Hub main revision missing")
+    main_sha = info.sha
+    prior = None
+    if os.environ.get("HF_RECEIPT_RUN"):
+        require(PRIOR_RECEIPT_FILE.is_file(), "retained publication receipt missing")
+        prior = prior_receipt(item)
+        require(api.repo_info(repo, repo_type=repo_type, revision=os.environ["RELEASE_TAG"]).sha
+                == prior["hf_revision"], "existing Hub tag differs from publication receipt")
+        info = api.repo_info(repo, repo_type=repo_type, revision=prior["hf_main_before"])
+        require(info.sha == prior["hf_main_before"], "historical Hub baseline mismatch")
     files = set(api.list_repo_files(repo, repo_type=repo_type, revision=info.sha))
     require("README.md" in files, "Hub curated card missing")
     staged = stage_files()
@@ -175,8 +220,13 @@ def preflight() -> None:
     (BASELINE_DIR / "README.md").write_bytes(card_bytes)
     card = ModelCard.load(BASELINE_DIR / "README.md")
     metadata = assert_metadata(card, item)
+    if prior:
+        # Historical cards retain their original release block. Today's renderer
+        # and edited release notes must not rewrite an immutable published card.
+        published_card = hub_file(repo, repo_type, prior["hf_revision"], "README.md", token)
+        staged["README.md"].write_bytes(published_card.read_bytes())
     evidence = {"sha": info.sha, "files": sorted(files), "hashes": hashes, "card_metadata": metadata,
-                "replacements": replacements}
+                "replacements": replacements, "main_sha": main_sha, "prior_receipt": prior}
     BASELINE_FILE.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"Hub baseline {info.sha}: {len(files)} files; curated metadata and collisions verified")
 
@@ -233,21 +283,43 @@ def publish() -> None:
             "rendered release block missing or duplicate")
     block = after_card.text.split(BEGIN, 1)[1].split(END, 1)[0]
     require(source_sha in block and os.environ["RELEASE_TAG"] in block, "release block source binding missing")
+    if base.get("prior_receipt"):
+        for row in (
+            f"| GitHub source | https://github.com/{os.environ['GITHUB_REPOSITORY']} |",
+            f"| Source commit | `{source_sha}` |",
+            f"| Hub revision | `{os.environ['RELEASE_TAG']}` |",
+        ):
+            require(row in block.splitlines(), "historical release card source binding differs")
 
     repo, repo_type, tag, token = (os.environ[key] for key in ("HF_REPO_ID", "HF_REPO_TYPE", "RELEASE_TAG", "HF_TOKEN"))
     api = HfApi(token=token)
-    require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == base["sha"],
+    main_before = base.get("main_sha", base["sha"])
+    require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == main_before,
             "Hub main changed since baseline")
     stage_hashes = {name: sha256(path) for name, path in staged.items()}
     expected_files = set(base["files"]) | set(staged)
     expected_hashes = dict(base["hashes"])
     expected_hashes.update(stage_hashes)
+    prior = base.get("prior_receipt")
+    if prior:
+        require(prior == prior_receipt(item), "prior publication receipt changed since baseline")
+        for key, value in {
+            "file_count_before": len(base["files"]), "file_count": len(expected_files),
+            "verified_file_count": len(expected_hashes),
+            "preserved_hub_files": len(set(base["files"]) - set(staged)),
+            "replaced_hub_files": sorted(base.get("replacements", {})),
+        }.items():
+            require(prior.get(key, [] if key == "replaced_hub_files" else None) == value,
+                    f"historical publication {key} mismatch")
     existing_tags = {ref.name for ref in api.list_repo_refs(repo, repo_type=repo_type).tags}
+    require(not prior or tag in existing_tags, "historical Hub tag missing; verification cannot upload")
     if tag in existing_tags:
         # A prior run may have created the tag before receipt/artifact delivery
         # failed. A retry may witness it, but may never move it.
         oid = api.repo_info(repo, repo_type=repo_type, revision=tag).sha
-        require(oid == base["sha"], "existing Hub tag does not point at current main")
+        require(prior is not None,
+                "existing Hub tag requires receipt_run for read-only historical verification")
+        require(oid == prior["hf_revision"], "existing Hub tag differs from publication receipt")
     else:
         commit = api.upload_folder(
             repo_id=repo, repo_type=repo_type, folder_path=str(STAGE), token=token,
@@ -261,8 +333,8 @@ def publish() -> None:
         api.create_tag(repo, tag=tag, tag_message=notes, revision=oid, repo_type=repo_type,
                        token=token, exist_ok=False)
     verify_revision(api, item, tag, oid, expected_files, expected_hashes, token)
-    require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == oid,
-            "Hub main moved after release upload")
+    require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == (main_before if prior else oid),
+            "Hub main moved during release publication or verification")
 
     receipt = {
         "state": "MEASURED",
@@ -282,7 +354,15 @@ def publish() -> None:
         "preserved_hub_files": len(set(base["files"]) - set(staged)),
         "replaced_hub_files": sorted(base.get("replacements", {})),
         "auth": auth,
+        "operation": "verify-existing" if prior else "publish",
+        "publication_auth": prior["auth"] if prior else auth,
+        "verification_auth": auth,
+        "hf_main_observed": main_before,
+        "file_sha256": expected_hashes,
     }
+    if prior:
+        receipt["source_receipt_run"] = os.environ["HF_RECEIPT_RUN"]
+        receipt["source_receipt_sha256"] = sha256(PRIOR_RECEIPT_FILE)
     RECEIPT_FILE.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(receipt, indent=2, sort_keys=True))
 
