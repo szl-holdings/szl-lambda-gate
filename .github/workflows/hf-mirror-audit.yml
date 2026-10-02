@@ -1,0 +1,84 @@
+name: hf-mirror-audit
+
+# Recheck the latest measured Hub release without a stored Hugging Face token.
+# The existing main-bound hf-mirror workflow performs the OIDC read-only audit.
+on:
+  schedule:
+    - cron: '19 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: hf-mirror-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.repository == 'szl-holdings/szl-lambda-gate' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Resolve latest measured publication
+        id: source
+        run: |
+          set -euo pipefail
+          release=$(gh release view --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,isPrerelease)
+          jq -e '.isDraft == false and .isPrerelease == false and (.tagName | length > 0)' \
+            <<<"$release" >/dev/null
+          tag=$(jq -r '.tagName' <<<"$release")
+          target=$(jq -c '[.targets[] | select(.hf_repo_id == "SZLHOLDINGS/szl-lambda-gate")]' \
+            .github/hf-mirror.json)
+          [ "$(jq 'length' <<<"$target")" -eq 1 ] || {
+            echo "::error::canonical Hub target missing or duplicated"; exit 1;
+          }
+          slug=$(jq -r '.[0].slug' <<<"$target")
+          repo_id=$(jq -r '.[0].hf_repo_id' <<<"$target")
+          selection=$(python3 scripts/find_hf_publication.py \
+            --repo "$GITHUB_REPOSITORY" --target "$repo_id" --tag "$tag" \
+            --slug "$slug" --branch "$GITHUB_REF_NAME")
+          receipt_run=$(jq -r '.receipt_run' <<<"$selection")
+          printf 'tag=%s\nreceipt_run=%s\ntarget=%s\nslug=%s\n' \
+            "$tag" "$receipt_run" "$repo_id" "$slug" >> "$GITHUB_OUTPUT"
+          echo "Measured publication: $tag from run $receipt_run"
+
+      - name: Dispatch and verify read-only Hub audit
+        env:
+          RELEASE_TAG: ${{ steps.source.outputs.tag }}
+          SOURCE_RUN: ${{ steps.source.outputs.receipt_run }}
+          HF_REPO_ID: ${{ steps.source.outputs.target }}
+          TARGET_SLUG: ${{ steps.source.outputs.slug }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -n --arg ref "$GITHUB_REF_NAME" --arg tag "$RELEASE_TAG" \
+            --arg receipt "$SOURCE_RUN" --arg only "$HF_REPO_ID" \
+            '{ref: $ref, inputs: {tag: $tag, receipt_run: $receipt, only: $only, auth: "oidc"}}')
+          response=$(gh api --method POST -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/hf-mirror.yml/dispatches" \
+            --input - <<<"$payload")
+          audit_run=$(jq -r '.workflow_run_id // empty' <<<"$response")
+          [[ "$audit_run" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::read-only audit run ID missing"; exit 1;
+          }
+          echo "Read-only audit: https://github.com/$GITHUB_REPOSITORY/actions/runs/$audit_run"
+          gh run watch "$audit_run" --repo "$GITHUB_REPOSITORY" --exit-status
+          receipt_name="hf-mirror-receipt-${TARGET_SLUG}-${RELEASE_TAG}"
+          mkdir -p .hfmirror-audit
+          gh run download "$audit_run" --repo "$GITHUB_REPOSITORY" \
+            --name "$receipt_name" --dir .hfmirror-audit
+          jq -e --arg tag "$RELEASE_TAG" --arg source "$SOURCE_RUN" \
+            --arg repo "$HF_REPO_ID" \
+            '.state == "MEASURED" and .operation == "verify-existing" and
+             .verification_auth == "oidc" and .github_tag == $tag and
+             .hf_repo_id == $repo and (.source_receipt_run | tostring) == $source and
+             .verified_file_count == (.file_sha256 | length)' \
+            .hfmirror-audit/hf-mirror-receipt.json >/dev/null
