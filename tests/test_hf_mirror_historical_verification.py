@@ -40,6 +40,10 @@ METADATA = {
 }
 
 
+class RevisionNotFoundError(Exception):
+    """Offline stand-in for the Hub's missing-revision response."""
+
+
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -57,6 +61,8 @@ class HistoricalHub:
         self.info_calls: list[str] = []
         self.main_answers: list[str] = []
         self.tag_answers: list[str] = []
+        self.refs_denied = False
+        self.tag_error: Exception | None = None
 
     def repo_info(self, repo: str, *, repo_type: str, revision: str) -> types.SimpleNamespace:
         assert (repo, repo_type) == (HUB_REPO, "model")
@@ -64,7 +70,10 @@ class HistoricalHub:
         if revision == "main":
             resolved = self.main_answers.pop(0) if self.main_answers else self.main
         elif revision == TAG:
-            assert self.tag_exists, "tag resolution attempted after deletion"
+            if self.tag_error is not None:
+                raise self.tag_error
+            if not self.tag_exists:
+                raise RevisionNotFoundError("tag does not exist")
             resolved = self.tag_answers.pop(0) if self.tag_answers else self.tag
         else:
             assert revision in self.trees, "unknown immutable revision"
@@ -81,6 +90,8 @@ class HistoricalHub:
 
     def list_repo_refs(self, repo: str, *, repo_type: str) -> types.SimpleNamespace:
         assert (repo, repo_type) == (HUB_REPO, "model")
+        if self.refs_denied:
+            raise PermissionError("gated repo refuses the refs endpoint")
         tags = [types.SimpleNamespace(name=TAG)] if self.tag_exists else []
         return types.SimpleNamespace(tags=tags)
 
@@ -203,6 +214,9 @@ def historical(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> types.SimpleN
 
     module.HfApi, module.ModelCard, module.hf_hub_download = api, ModelCard, hub.download
     monkeypatch.setitem(sys.modules, "huggingface_hub", module)
+    errors = types.ModuleType("huggingface_hub.errors")
+    errors.RevisionNotFoundError = RevisionNotFoundError
+    monkeypatch.setitem(sys.modules, "huggingface_hub.errors", errors)
     return types.SimpleNamespace(hub=hub, item=item, receipt=receipt, run=run, rendered=rendered,
                                  staged=staged, pinned=pinned)
 
@@ -305,6 +319,39 @@ def test_existing_historical_tag_verifies_after_main_advanced_without_writes(
     assert historical.hub.mutations == []
     assert historical.hub.main == MAIN_SHA
     assert historical.hub.tag == RELEASE_SHA
+
+
+def test_gated_refs_endpoint_is_not_needed_to_verify_existing_tag(
+    historical: types.SimpleNamespace,
+) -> None:
+    prepare(historical)
+    historical.hub.refs_denied = True
+    mirror.publish()
+    assert json.loads(mirror.RECEIPT_FILE.read_text(encoding="utf-8"))["operation"] == "verify-existing"
+    assert historical.hub.mutations == []
+
+
+def test_gated_refs_endpoint_does_not_block_new_tag_publication(
+    historical: types.SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HF_RECEIPT_RUN")
+    historical.hub.tag_exists = False
+    prepare(historical)
+    historical.hub.refs_denied = True
+    with pytest.raises(AssertionError, match="attempted upload_folder"):
+        mirror.publish()
+    assert historical.hub.mutations == ["upload_folder"]
+    assert not mirror.RECEIPT_FILE.exists()
+
+
+def test_tag_lookup_denial_fails_before_upload(
+    historical: types.SimpleNamespace,
+) -> None:
+    prepare(historical)
+    historical.hub.tag_error = PermissionError("tag lookup denied")
+    with pytest.raises(PermissionError, match="tag lookup denied"):
+        mirror.publish()
+    assert_no_publication(historical)
 
 
 @pytest.mark.parametrize("row", [

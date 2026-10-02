@@ -283,6 +283,7 @@ def verify_revision(api: HfApi, item: dict, revision: str, expected_sha: str,
 
 def publish() -> None:
     from huggingface_hub import HfApi, ModelCard
+    from huggingface_hub.errors import RevisionNotFoundError
 
     item = target()
     base = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
@@ -328,12 +329,18 @@ def publish() -> None:
         }.items():
             require(prior.get(key, [] if key == "replaced_hub_files" else None) == value,
                     f"historical publication {key} mismatch")
-    existing_tags = {ref.name for ref in api.list_repo_refs(repo, repo_type=repo_type).tags}
-    require(not prior or tag in existing_tags, "historical Hub tag missing; verification cannot upload")
-    if tag in existing_tags:
+    # The refs listing can deny a repo-scoped publisher token on a gated model,
+    # even when that token can resolve a named revision and write this repo.
+    # Only a missing revision permits a new publication; other errors fail closed.
+    try:
+        tagged = api.repo_info(repo, repo_type=repo_type, revision=tag)
+    except RevisionNotFoundError:
+        tagged = None
+    require(not prior or tagged is not None, "historical Hub tag missing; verification cannot upload")
+    if tagged is not None:
         # A prior run may have created the tag before receipt/artifact delivery
         # failed. A retry may witness it, but may never move it.
-        oid = api.repo_info(repo, repo_type=repo_type, revision=tag).sha
+        oid = tagged.sha
         require(prior is not None,
                 "existing Hub tag requires receipt_run for read-only historical verification")
         require(oid == prior["hf_revision"], "existing Hub tag differs from publication receipt")
