@@ -34,13 +34,24 @@ If verification fails after a PR is created, the artifact instead remains
 `PENDING_HUB_PR_UNVERIFIED`. The workflow
 never creates a tag or a `MEASURED` receipt for a proposal.
 
-The Hub PR needs owner review and a protected merge. After the merge, dispatch
-`hf-mirror.yml` on GitHub `main` with `tag=<release tag>`,
-`only=SZLHOLDINGS/szl-lambda-gate`, `proposal_run=<verified proposal run ID>`,
-and `auth=pat`. The owner must provide a write-capable `HF_TOKEN` repository
-secret for this explicit finalization run; the workflow checks write access
-before calling the Hub. It accepts only a failed proposal run from the same
-GitHub repository, workflow, and branch whose artifact has
+The Hub PR needs owner review and a protected merge. After reviewing the PR
+diff and the retained proposal artifact, the owner can merge it in the Hub UI
+or explicitly dispatch `hf-hub-pr-merge.yml` on reviewed GitHub `main` with
+`tag=<release tag>`, `only=SZLHOLDINGS/szl-lambda-gate`, and
+`proposal_run=<verified proposal run ID>`. This separate manual workflow checks
+the source tag and proposal run, verifies the complete PR tree, opens a draft
+PR, asks the Hub to merge it, then reads back every merged file. Its
+`MERGED_HUB_PR_VERIFIED` artifact records the merge; it creates no Hub tag or
+publication receipt. If Hub protection denies the merge, it fails without a
+merge receipt. A retry after an already completed merge performs only readback.
+
+After the merge, dispatch `hf-mirror.yml` on GitHub `main` with
+`tag=<release tag>`, `only=SZLHOLDINGS/szl-lambda-gate`, and
+`proposal_run=<verified proposal run ID>`,
+and `auth=pat`. The owner must provide a write-capable `HF_TOKEN` Actions
+secret available to this repository for these explicit runs; the workflows
+check write access before calling the Hub. Finalization accepts only a failed
+proposal run from the same GitHub repository, workflow, and branch whose artifact has
 `PENDING_HUB_PR_REVIEW`. The proposal workflow commit and release source tag
 must both be ancestors of the reviewed GitHub main commit.
 

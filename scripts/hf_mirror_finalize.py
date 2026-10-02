@@ -10,12 +10,14 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 
 import hf_mirror_release as mirror
 
 
 PROPOSAL_FILE = Path(".hfmirror-proposal.json")
 PROPOSAL_RUN_FILE = Path(".hfmirror-proposal-run.json")
+MERGE_RECEIPT_FILE = Path("hf-mirror-merge.json")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 RUN_ID = re.compile(r"[1-9][0-9]*\Z")
@@ -117,33 +119,20 @@ def proposal_evidence(item: dict) -> dict:
     return proposal
 
 
-def finalize() -> str:
-    from huggingface_hub import HfApi
-    from huggingface_hub.errors import RevisionNotFoundError
-
-    item = mirror.target()
-    proposal = proposal_evidence(item)
-    repo, repo_type, tag, token = (
-        os.environ[key] for key in ("HF_REPO_ID", "HF_REPO_TYPE", "RELEASE_TAG", "HF_TOKEN")
-    )
-    api = HfApi(token=token)
-    details = api.get_discussion_details(repo, proposal["pr_number"], repo_type=repo_type)
+def require_pr_identity(details: object, proposal: dict, repo: str, repo_type: str) -> None:
     mirror.require(field(details, "num") == proposal["pr_number"], "Hub PR number mismatch")
     mirror.require(field(details, "repo_id") == repo and field(details, "repo_type") == repo_type,
                    "Hub PR repository mismatch")
     mirror.require(field(details, "is_pull_request") is True, "Hub discussion is not a pull request")
-    mirror.require(field(details, "status") == "merged", "Hub PR is not merged")
     mirror.require(field(details, "target_branch") == "refs/heads/main", "Hub PR target branch mismatch")
-    merged_oid = field(details, "merge_commit_oid")
-    mirror.require(isinstance(merged_oid, str) and SHA.fullmatch(merged_oid) is not None,
-                   "Hub PR merge commit invalid")
     events = field(details, "events") or []
     mirror.require(any(field(event, "oid") == proposal["hf_pr_commit"] for event in events),
                    "Hub PR does not contain proposal commit")
-    mirror.require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == merged_oid,
-                   "Hub main differs from merged PR commit")
-    mirror.require(merged_oid != proposal["hf_main_before"], "Hub PR did not advance main")
 
+
+def verify_additive_union(api: object, item: dict, proposal: dict, token: str,
+                          revision: str, expected_sha: str) -> set[str]:
+    repo, repo_type = os.environ["HF_REPO_ID"], os.environ["HF_REPO_TYPE"]
     before = proposal["hf_main_before"]
     mirror.require(api.repo_info(repo, repo_type=repo_type, revision=before).sha == before,
                    "proposal Hub baseline revision unavailable")
@@ -167,7 +156,107 @@ def finalize() -> str:
         mirror.require(mirror.sha256(mirror.hub_file(repo, repo_type, before, name, token)) == hashes[name],
                        f"preserved Hub file changed: {name}")
 
-    mirror.verify_revision(api, item, merged_oid, merged_oid, set(hashes), hashes, token)
+    mirror.verify_revision(api, item, revision, expected_sha, set(hashes), hashes, token)
+    return before_files
+
+
+def merge_proposal() -> str:
+    """Owner-dispatched, receipt-bound Hub PR merge; never creates a tag."""
+    from huggingface_hub import HfApi
+    from huggingface_hub.errors import RevisionNotFoundError
+
+    item = mirror.target()
+    proposal = proposal_evidence(item)
+    repo, repo_type, tag, token = (
+        os.environ[key] for key in ("HF_REPO_ID", "HF_REPO_TYPE", "RELEASE_TAG", "HF_TOKEN")
+    )
+    api = HfApi(token=token)
+    details = api.get_discussion_details(repo, proposal["pr_number"], repo_type=repo_type)
+    require_pr_identity(details, proposal, repo, repo_type)
+    status = field(details, "status")
+    mirror.require(status in ("draft", "open", "merged"), "Hub PR status cannot be merged")
+    mirror.require(not field(details, "conflicting_files"), "Hub PR has conflicting files")
+    if status != "merged":
+        mirror.require(field(details, "merge_commit_oid") is None,
+                       "unmerged Hub PR has a merge commit")
+        mirror.require(api.repo_info(repo, repo_type=repo_type, revision="main").sha
+                       == proposal["hf_main_before"], "Hub main differs from proposal baseline")
+        try:
+            api.repo_info(repo, repo_type=repo_type, revision=tag)
+        except RevisionNotFoundError:
+            pass
+        else:
+            mirror.require(False, "Hub release tag already exists")
+        verify_additive_union(api, item, proposal, token, proposal["hf_pr_revision"],
+                              proposal["hf_pr_commit"])
+        mirror.require(api.repo_info(repo, repo_type=repo_type, revision="main").sha
+                       == proposal["hf_main_before"], "Hub main moved before PR merge")
+        if status == "draft":
+            api.change_discussion_status(repo, proposal["pr_number"], "open",
+                                         repo_type=repo_type, token=token)
+        details = api.get_discussion_details(repo, proposal["pr_number"], repo_type=repo_type)
+        require_pr_identity(details, proposal, repo, repo_type)
+        mirror.require(field(details, "status") == "open", "Hub PR did not become open")
+        mirror.require(not field(details, "conflicting_files"), "Hub PR gained conflicting files")
+        mirror.require(api.repo_info(repo, repo_type=repo_type, revision=proposal["hf_pr_revision"]).sha
+                       == proposal["hf_pr_commit"], "Hub PR head moved before merge")
+        mirror.require(api.repo_info(repo, repo_type=repo_type, revision="main").sha
+                       == proposal["hf_main_before"], "Hub main moved before PR merge")
+        api.merge_pull_request(repo, proposal["pr_number"], repo_type=repo_type, token=token)
+        details = api.get_discussion_details(repo, proposal["pr_number"], repo_type=repo_type)
+        require_pr_identity(details, proposal, repo, repo_type)
+
+    mirror.require(field(details, "status") == "merged", "Hub PR merge was not confirmed")
+    merged_oid = field(details, "merge_commit_oid")
+    mirror.require(isinstance(merged_oid, str) and SHA.fullmatch(merged_oid) is not None,
+                   "Hub PR merge commit invalid")
+    mirror.require(merged_oid != proposal["hf_main_before"], "Hub PR did not advance main")
+    mirror.require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == merged_oid,
+                   "Hub main differs from merged PR commit")
+    before_files = verify_additive_union(api, item, proposal, token, merged_oid, merged_oid)
+    mirror.require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == merged_oid,
+                   "Hub main moved during PR merge verification")
+    receipt = {
+        "state": "MERGED_HUB_PR_VERIFIED", "operation": "merge-hub-pr", "auth": "pat",
+        "github_repo": os.environ["GITHUB_REPOSITORY"],
+        "github_sha": os.environ["SOURCE_GITHUB_SHA"],
+        "github_workflow_sha": os.environ["GITHUB_SHA"],
+        "github_tag": tag, "hf_repo_id": repo, "hf_repo_type": repo_type,
+        "hf_main_before": proposal["hf_main_before"], "hf_revision": merged_oid,
+        "hf_pr_url": proposal["hf_pr_url"], "hf_pr_commit": proposal["hf_pr_commit"],
+        "source_proposal_run": os.environ["HF_PROPOSAL_RUN"],
+        "source_proposal_sha256": mirror.sha256(PROPOSAL_FILE),
+        "file_count_before": len(before_files), "verified_file_count": len(proposal["file_sha256"]),
+        "file_sha256": proposal["file_sha256"], "hub_tag_created": False,
+    }
+    MERGE_RECEIPT_FILE.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(receipt, indent=2, sort_keys=True))
+    return receipt["state"]
+
+
+def finalize() -> str:
+    from huggingface_hub import HfApi
+    from huggingface_hub.errors import RevisionNotFoundError
+
+    item = mirror.target()
+    proposal = proposal_evidence(item)
+    repo, repo_type, tag, token = (
+        os.environ[key] for key in ("HF_REPO_ID", "HF_REPO_TYPE", "RELEASE_TAG", "HF_TOKEN")
+    )
+    api = HfApi(token=token)
+    details = api.get_discussion_details(repo, proposal["pr_number"], repo_type=repo_type)
+    require_pr_identity(details, proposal, repo, repo_type)
+    mirror.require(field(details, "status") == "merged", "Hub PR is not merged")
+    merged_oid = field(details, "merge_commit_oid")
+    mirror.require(isinstance(merged_oid, str) and SHA.fullmatch(merged_oid) is not None,
+                   "Hub PR merge commit invalid")
+    mirror.require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == merged_oid,
+                   "Hub main differs from merged PR commit")
+    mirror.require(merged_oid != proposal["hf_main_before"], "Hub PR did not advance main")
+
+    before_files = verify_additive_union(api, item, proposal, token, merged_oid, merged_oid)
+    hashes = proposal["file_sha256"]
+    before = proposal["hf_main_before"]
     mirror.require(api.repo_info(repo, repo_type=repo_type, revision="main").sha == merged_oid,
                    "Hub main moved before release tagging")
     try:
@@ -211,4 +300,6 @@ def finalize() -> str:
 
 
 if __name__ == "__main__":
-    finalize()
+    mirror.require(len(sys.argv) in (1, 2) and (len(sys.argv) == 1 or sys.argv[1] == "merge"),
+                   "expected no argument or merge")
+    merge_proposal() if len(sys.argv) == 2 else finalize()
