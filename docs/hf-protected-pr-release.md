@@ -7,6 +7,15 @@ protected `main` branch. On 2026-10-02, workflow run
 resolved OIDC, verified the release assets and Hub baseline, then received
 HTTP 403 from the Hub when it tried to commit to `main`. The Hub response
 required `create_pr=1`. That attempt did not publish `v0.2.1` to the Hub.
+Later, [run `37067017822`](https://github.com/szl-holdings/szl-lambda-gate/actions/runs/37067017822)
+used the explicitly selected PAT fallback to publish `v0.2.1` from GitHub
+source commit `019666f1e33174ecc1a5d0c3b4a0f54ac70c93a0`. Its measured receipt
+records Hub main/tag `8fdbfd09145f5910b87a6f4b0e16ca9e3ed6ea87` and
+77 verified files, including 44 preserved Hub-only files. A separate
+[read-only OIDC run `37067900438`](https://github.com/szl-holdings/szl-lambda-gate/actions/runs/37067900438)
+verified the existing release against that publication receipt. This PR
+defines the protected-PR route for future new releases; it does not republish
+or move the measured `v0.2.1` tag.
 
 For a new release, `hf-mirror` now submits an additive Hub pull request with
 `create_pr=True` and `parent_commit` bound to the captured Hub `main`. The
