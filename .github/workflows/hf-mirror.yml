@@ -42,6 +42,9 @@ on:
       only:
         description: Limit to a single hf_repo_id
         required: false
+      receipt_run:
+        description: Successful publication run ID for read-only verification of an existing Hub tag
+        required: false
       auth:
         description: Authentication mode for a manual release dispatch
         type: choice
@@ -121,6 +124,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -133,6 +137,7 @@ jobs:
       HF_OIDC_RESOURCE: ${{ matrix.target.oidc_resource }}
       HF_MIRROR_OIDC_RESOURCE: ${{ matrix.target.oidc_resource }}
       HF_XET_HIGH_PERFORMANCE: '1'
+      HF_RECEIPT_RUN: ${{ inputs.receipt_run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -171,6 +176,32 @@ jobs:
             .hfmirror-release.json >/dev/null
           echo "SOURCE_GITHUB_SHA=$source_sha" >> "$GITHUB_ENV"
           echo "release source commit: $source_sha"
+
+      - name: Retrieve original publication receipt for historical verification
+        if: inputs.receipt_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HF_TOKEN: ''
+          RECEIPT_NAME: hf-mirror-receipt-${{ matrix.target.slug }}-${{ inputs.tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          [[ "$HF_RECEIPT_RUN" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::invalid publication run ID"; exit 1;
+          }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$HF_RECEIPT_RUN" \
+            > .hfmirror-prior-run.json
+          jq -e --arg repo "$GITHUB_REPOSITORY" --arg branch "$DEFAULT_BRANCH" \
+            --arg run "$HF_RECEIPT_RUN" \
+              '(.id | tostring) == $run and .repository.full_name == $repo and
+               .head_repository.full_name == $repo and .head_branch == $branch and
+               .path == ".github/workflows/hf-mirror.yml" and
+               .event == "workflow_dispatch" and .conclusion == "success"' \
+            .hfmirror-prior-run.json >/dev/null
+          gh run download "$HF_RECEIPT_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "$RECEIPT_NAME" --dir .hfmirror-prior
+          mv .hfmirror-prior-run.json .hfmirror-prior/run.json
+          test -f .hfmirror-prior/hf-mirror-receipt.json
 
       - name: Validate Hub credential mode
         env:
@@ -271,6 +302,7 @@ jobs:
         run: python scripts/hf_mirror_release.py preflight
 
       - name: Render and validate model card
+        if: inputs.receipt_run == ''
         env:
           HF_OIDC_RESOURCE: ''
           HF_TOKEN: ''
