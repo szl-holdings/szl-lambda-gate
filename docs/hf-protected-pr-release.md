@@ -13,9 +13,17 @@ source commit `019666f1e33174ecc1a5d0c3b4a0f54ac70c93a0`. Its measured receipt
 records Hub main/tag `8fdbfd09145f5910b87a6f4b0e16ca9e3ed6ea87` and
 77 verified files, including 44 preserved Hub-only files. A separate
 [read-only OIDC run `37067900438`](https://github.com/szl-holdings/szl-lambda-gate/actions/runs/37067900438)
-verified the existing release against that publication receipt. This PR
-defines the protected-PR route for future new releases; it does not republish
-or move the measured `v0.2.1` tag.
+verified the existing release against that publication receipt. The
+protected-PR route did not republish or move the measured `v0.2.1` tag.
+For `v0.2.2`, the OIDC proposal
+[run `37075898393`](https://github.com/szl-holdings/szl-lambda-gate/actions/runs/37075898393)
+exchanged a token and read the Hub baseline but received HTTP 403 from
+`preupload/main?create_pr=1`. The explicit PAT proposal was reviewed and
+merged as [Hub PR 7](https://huggingface.co/SZLHOLDINGS/szl-lambda-gate/discussions/7).
+[Run `37077992129`](https://github.com/szl-holdings/szl-lambda-gate/actions/runs/37077992129)
+created the `v0.2.2` Hub tag and measured all 80 files; an independent
+[OIDC audit](https://github.com/szl-holdings/szl-lambda-gate/actions/runs/37078125518)
+verified the same bytes. OIDC proposal writing remains unavailable.
 
 For a new release, `hf-mirror` now submits an additive Hub pull request with
 `create_pr=True` and `parent_commit` bound to the captured Hub `main`. The
@@ -47,11 +55,11 @@ merge receipt. A retry after an already completed merge performs only readback.
 
 After the merge, dispatch `hf-mirror.yml` on GitHub `main` with
 `tag=<release tag>`, `only=SZLHOLDINGS/szl-lambda-gate`, and
-`proposal_run=<verified proposal run ID>`,
-and `auth=pat`. The owner must provide a write-capable `HF_TOKEN` Actions
-secret available to this repository for these explicit runs; the workflows
-check write access before calling the Hub. Finalization accepts only a failed
-proposal run from the same GitHub repository, workflow, and branch whose artifact has
+`proposal_run=<verified proposal run ID>`, and `auth=pat`. The owner must
+provide a write-capable `HF_TOKEN` Actions secret available to this repository
+for these explicit runs; the workflows check write access before calling the
+Hub. Finalization accepts only a failed proposal run from the same GitHub
+repository, workflow, and branch whose artifact has
 `PENDING_HUB_PR_REVIEW`. The proposal workflow commit and release source tag
 must both be ancestors of the reviewed GitHub main commit.
 
@@ -73,3 +81,12 @@ retained proposal artifact to reconcile an existing proposal before any retry.
 The `receipt_run` workflow input still performs read-only verification of a
 successful historical publication receipt. A pending proposal run cannot be
 used as a publication receipt.
+
+To diagnose OIDC write access without uploading content, dispatch
+`hf-mirror.yml` on GitHub `main` with `tag=<published tag>`,
+`only=SZLHOLDINGS/szl-lambda-gate`, `receipt_run=<successful publication run>`,
+`auth=oidc`, and `oidc_write_probe=true`. This checks content-write permission
+for the exchanged token before the usual read-only receipt audit. It accepts
+only an existing release receipt and the canonical target. Normal read-only
+audits leave the probe disabled. New-release OIDC proposals also check write
+access before staging, so a denied token fails without attempting an upload.
