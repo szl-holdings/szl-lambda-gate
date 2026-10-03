@@ -24,6 +24,10 @@ merged as [Hub PR 7](https://huggingface.co/SZLHOLDINGS/szl-lambda-gate/discussi
 created the `v0.2.2` Hub tag and measured all 80 files; an independent
 [OIDC audit](https://github.com/szl-holdings/szl-lambda-gate/actions/runs/37078125518)
 verified the same bytes. OIDC proposal writing remains unavailable.
+An [OIDC write-check run](https://github.com/szl-holdings/szl-lambda-gate/actions/runs/37080348450)
+confirmed a repo-scoped token but received HTTP 401 from the Hub's generic
+`auth-check/write` endpoint. That endpoint result does not establish whether
+the token can negotiate a protected PR upload.
 
 For a new release, `hf-mirror` now submits an additive Hub pull request with
 `create_pr=True` and `parent_commit` bound to the captured Hub `main`. The
@@ -82,11 +86,12 @@ The `receipt_run` workflow input still performs read-only verification of a
 successful historical publication receipt. A pending proposal run cannot be
 used as a publication receipt.
 
-To diagnose OIDC write access without uploading content, dispatch
+To diagnose the exact OIDC PR permission without uploading content, dispatch
 `hf-mirror.yml` on GitHub `main` with `tag=<published tag>`,
 `only=SZLHOLDINGS/szl-lambda-gate`, `receipt_run=<successful publication run>`,
-`auth=oidc`, and `oidc_write_probe=true`. This checks content-write permission
-for the exchanged token before the usual read-only receipt audit. It accepts
-only an existing release receipt and the canonical target. Normal read-only
-audits leave the probe disabled. New-release OIDC proposals also check write
-access before staging, so a denied token fails without attempting an upload.
+`auth=oidc`, and `oidc_write_probe=true`. The probe sends one small file's
+metadata to `preupload/main?create_pr=1` and checks the response. It does not
+upload content, create a PR, or commit a file. It accepts only an existing
+release receipt and the canonical target, then continues to the normal
+read-only audit if the preupload check succeeds. Ordinary audits leave the
+probe disabled. New-release proposals retain their existing upload path.
