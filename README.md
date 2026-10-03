@@ -171,7 +171,11 @@ The torch kernel above predates a written contract, and the estate carries sever
 - **Not yet v1.** The torch `lambda_aggregate` clamps x > 1, maps NaN and ±Inf to 0 and renormalises weights; `tests/test_lambda_v1_torch_divergence.py` pins each difference. `tests/lambda_aggregator_source.py` is not canonical either.
 - **Honesty.** Λ uniqueness is Conjecture 1 (open). The spec records `"uniqueness": "CONJECTURE_1_NOT_USED"` because nothing in the contract relies on Conjecture 1.
 
-Run the vectors with the standard library only: `python -m pytest -q tests/test_lambda_v1_vectors.py`.
+Run a stdlib-only, revision-bound offline replay with
+`python -B -I scripts/replay_lambda_v1.py --output <path-outside-this-checkout>`.
+It checks all 60 vectors and four synthetic fail/abstain cases without writing
+into the source tree. See [offline replay and regression checks](./docs/offline-lambda-replay.md).
+The separate `python -m pytest -q tests/test_lambda_v1_vectors.py` suite requires pytest.
 
 ---
 
