@@ -45,7 +45,7 @@ def test_release_mirror_requires_branch_bound_oidc() -> None:
     assert 'inputs: {tag: $tag, auth: "oidc"}' in text
 
 
-def test_oidc_write_probe_is_limited_to_existing_release_audit() -> None:
+def test_oidc_pr_probe_is_limited_to_existing_release_audit() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "oidc_write_probe:" in text
@@ -53,9 +53,9 @@ def test_oidc_write_probe_is_limited_to_existing_release_audit() -> None:
     assert '[[ "$RECEIPT_RUN" =~ ^[1-9][0-9]*$ ]]' in text
     assert '[ "$AUTH_MODE" = oidc ]' in text
     assert 'OIDC_WRITE_PROBE: ${{ inputs.oidc_write_probe }}' in text
-    assert 'auth_check(repo_id=repo' in text
-    assert 'token=os.environ["HF_TOKEN"], write=True' in text
-    assert 'if [ -z "$HF_RECEIPT_RUN" ] || [ "$OIDC_WRITE_PROBE" = true ]; then' in text
+    assert 'if [ "$OIDC_WRITE_PROBE" = true ]; then' in text
+    assert 'HF_TOKEN="$oidc_token" python scripts/hf_mirror_oidc_probe.py' in text
+    assert 'if [ -z "$HF_RECEIPT_RUN" ] || [ "$OIDC_WRITE_PROBE" = true ]; then' not in text
 
 
 def test_release_auth_labels_explicit_mode(monkeypatch: pytest.MonkeyPatch) -> None:
