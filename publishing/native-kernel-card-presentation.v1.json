@@ -1,0 +1,59 @@
+{
+  "schema": "szl.source-card-presentation/v1",
+  "source_repository": "szl-holdings/szl-lambda-gate",
+  "source_revision": "ee213a148dede345bfd05396178dfba04f59bd82",
+  "shared_mark_dependency": {
+    "url": "https://raw.githubusercontent.com/szl-holdings/.github/main/profile/assets/szl/logos/szl_mark_holographic.svg",
+    "source_pr": "https://github.com/szl-holdings/.github/pull/864",
+    "source_revision": "40cc2b57a57934a048bb980a023f8a8e533c15e5"
+  },
+  "publication_boundary": "Source review only. The existing closed controller remains the publisher; no new writer, direct Hub write, code-pin update, ABI/build mutation or runtime qualification is authorized by this presentation map.",
+  "central_apply_allowed": false,
+  "cards": [
+    {
+      "kind": "kernels",
+      "repo_id": "SZLHOLDINGS/szl-governed-norm",
+      "source_repository": "szl-holdings/szl-lambda-gate",
+      "source_path": "hf-kernels/szl-governed-norm/README.md",
+      "source_url": "https://github.com/szl-holdings/szl-lambda-gate/blob/ee213a148dede345bfd05396178dfba04f59bd82/hf-kernels/szl-governed-norm/README.md",
+      "publisher_repository": "szl-holdings/.github",
+      "publisher_workflow": ".github/workflows/hf-kernel-card-publish-v2.yml",
+      "publisher_source_url": "https://github.com/szl-holdings/.github/blob/40cc2b57a57934a048bb980a023f8a8e533c15e5/.github/workflows/hf-kernel-card-publish-v2.yml",
+      "publication_trigger": "EXISTING_CONTROLLER_SCHEDULE_OR_MANUAL_OR_CONTROLLER_WORKFLOW_PUSH",
+      "source_repository_push_directly_triggers_publisher": false,
+      "publisher_mutation_paths": [
+        "README.md",
+        "contract.json"
+      ],
+      "contract_path": "hf-kernels/szl-governed-norm/contract.json",
+      "contract_sha256": "c11417196f22d178827b980d64bcc307c84a93f17d1229dea907b45c05719924",
+      "contract_bytes_unchanged": true,
+      "license": "apache-2.0",
+      "license_source": "hf-kernels/szl-governed-norm/contract.json",
+      "contract_kernel_revision": "fe16433d44be03177167e8355c43a4bfdc63e03e",
+      "required_trust_remote_code": true,
+      "observed_hub_revision": "3265120dfbbe764c6cfc9afcb204dcd1c216e8ab",
+      "observed_at": "2026-10-04T16:11:47.110628+00:00",
+      "observed_hub_card_sha256": "394cdcdc2715c32ed1f0c98092cbcf9997c48d84c59fe2a0c5a36514d0465b9c",
+      "original_body_sha256": "394cdcdc2715c32ed1f0c98092cbcf9997c48d84c59fe2a0c5a36514d0465b9c",
+      "before_sha256": "394cdcdc2715c32ed1f0c98092cbcf9997c48d84c59fe2a0c5a36514d0465b9c",
+      "output_sha256": "331a37344e3ba8b311562c7991b7d431f0c2d1b75831a4b8b2f9f6a1c24f57d5",
+      "after_sha256": "331a37344e3ba8b311562c7991b7d431f0c2d1b75831a4b8b2f9f6a1c24f57d5",
+      "original_body_preserved": true,
+      "front_matter_present": false,
+      "front_matter_state": "ABSENT_UNCHANGED",
+      "artifact_type": "kernel_library",
+      "artifact": "Tensor-normalization software kernel",
+      "stage": "Retained compatibility contract",
+      "visible_limits": [
+        "Use the exact first-class Kernel Hub pin below. The native kernel and model repositories have separate revision histories.",
+        "Loading the kernel executes repository code and requires explicit trust. Inspect the immutable revision before enabling `trust_remote_code=True`.",
+        "The ABI, existing builds and qualification evidence stay unchanged; new source development lives in `szl_lambda_gate.governed_norm`."
+      ],
+      "primary_try_url": null,
+      "explore_url": "https://huggingface.co/spaces/SZLHOLDINGS/szl-command-lab",
+      "runtime_or_provider_promotion": false,
+      "disposition": "READY_SOURCE_REVIEW"
+    }
+  ]
+}
