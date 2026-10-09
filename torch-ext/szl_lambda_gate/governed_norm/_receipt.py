@@ -71,19 +71,73 @@ def _maybe_sign(
     return env
 
 
-def _tensor_digest(t: torch.Tensor, decimals: int = 6) -> str:
-    """Deterministic SHA3-256 over a tensor's rounded float32 contents.
+# Historical receipts used the rounded-int64 encoding. The class-byte encoding
+# prefixes one class byte per element, so finite-value digests change too.
+# A stored hash is never rewritten from one encoding into the other.
+# Donor: szl-governed-norm src _receipt.py at
+# 3ef27eb7ebf491b0a6ce69be170ecef4c37885a2, file pin
+# c68d06d35058542ea77dc6bad4c8bde2361cc16a.
+TENSOR_DIGEST_LEGACY = "rounded-int64-v1"
+TENSOR_DIGEST_CLASS_BYTE = "class-byte-v1"
+TENSOR_DIGEST_DEFAULT = TENSOR_DIGEST_CLASS_BYTE
 
-    Rounding to a fixed number of decimals makes the digest stable across
-    devices/dtypes for the same logical values (tiny FP noise won't change
-    it). This is an integrity fingerprint, not a signature.
+
+def _tensor_digest(
+    t: torch.Tensor,
+    decimals: int = 6,
+    *,
+    encoding: str = TENSOR_DIGEST_DEFAULT,
+) -> str:
+    """SHA3-256 of a tensor under an explicit encoding.
+
+    ``rounded-int64-v1`` is the historical interpretation. ``class-byte-v1``
+    is the current default. Passing the other encoding interprets the same
+    tensor; it does not replace a hash that was already stored.
+    """
+    if encoding == TENSOR_DIGEST_LEGACY:
+        return _tensor_digest_legacy(t, decimals)
+    if encoding == TENSOR_DIGEST_CLASS_BYTE:
+        return _tensor_digest_class_byte(t, decimals)
+    raise ValueError(
+        f"unknown tensor digest encoding {encoding!r}; "
+        f"expected {TENSOR_DIGEST_LEGACY!r} or {TENSOR_DIGEST_CLASS_BYTE!r}"
+    )
+
+
+def _tensor_digest_legacy(t: torch.Tensor, decimals: int = 6) -> str:
+    """Historical digest: rounded int64 payload only.
+
+    Non-finite values can collide under int64 saturation. This function
+    remains so those historical hashes can still be reproduced.
     """
     flat = t.detach().to(torch.float32).reshape(-1)
-    # Round to `decimals` places, integerize, hash the raw bytes. CPU move is
-    # required to read bytes; kept O(n) and allocation-light.
     scaled = torch.round(flat * (10 ** decimals)).to(torch.int64).cpu().numpy().tobytes()
     h = hashlib.sha3_256()
     h.update(scaled)
+    return h.hexdigest()
+
+
+def _tensor_digest_class_byte(t: torch.Tensor, decimals: int = 6) -> str:
+    """Class-byte digest. Finite digests change because the class bytes are hashed first.
+
+    Each element contributes a class byte (0 = finite, 1 = +Inf, 2 = -Inf,
+    3 = NaN) and then its rounded int64 payload. Non-finite payloads are 0,
+    so the class byte carries their identity. Finite payloads stay the
+    rounded int64 values, but the prefix means the SHA3-256 digest is not
+    the legacy digest. -0.0 and +0.0 still share a digest.
+    """
+    flat = t.detach().to(torch.float32).reshape(-1)
+    cls = torch.zeros_like(flat, dtype=torch.uint8)
+    cls[flat == float("inf")] = 1
+    cls[flat == float("-inf")] = 2
+    cls[torch.isnan(flat)] = 3
+    finite = cls == 0
+    scaled = torch.where(
+        finite, torch.round(flat * (10 ** decimals)), torch.zeros_like(flat)
+    ).to(torch.int64)
+    h = hashlib.sha3_256()
+    h.update(cls.cpu().numpy().tobytes())
+    h.update(scaled.cpu().numpy().tobytes())
     return h.hexdigest()
 
 
@@ -112,6 +166,7 @@ def emit_receipt(
     policy_id: str = _POLICY_ID,
     sign_key: Optional[Union[str, bytes]] = None,
     organ: str = _ORGAN,
+    digest_encoding: str = TENSOR_DIGEST_DEFAULT,
 ) -> Optional[Dict[str, Any]]:
     """Canonical szl-receipt v0.2.0 evidence binding for a governed-norm call.
 
@@ -122,7 +177,8 @@ def emit_receipt(
 
         subject        organ / norm-call id (who/what emitted this)
         input_digest   SHA3-256 over canonical {input shape, dtype, eps}
-        output_digest  the EXISTING SHA3-256 rounded-tensor digest of ``out``
+        output_digest  SHA3-256 of ``out`` under ``digest_encoding``
+                       (default class-byte-v1; legacy remains callable)
         policy_id      the governing policy id
         energy         the literal string "UNAVAILABLE"
 
@@ -145,7 +201,7 @@ def emit_receipt(
     body = {
         "subject": subject if subject is not None else f"{organ}/{op}",
         "input_digest": _input_digest(x, eps),
-        "output_digest": _tensor_digest(out),
+        "output_digest": _tensor_digest(out, encoding=digest_encoding),
         "policy_id": policy_id,
         "energy": _ENERGY_UNAVAILABLE,
     }
@@ -179,21 +235,31 @@ class ReceiptChain:
         sign_key: Optional[Union[str, bytes]] = None,
         organ: str = _ORGAN,
         policy_id: str = _POLICY_ID,
+        digest_encoding: str = TENSOR_DIGEST_DEFAULT,
     ) -> Dict[str, Any]:
         with self._lock:
             prev = self._records[-1]["digest"] if self._records else _GENESIS
             seq = len(self._records)
+            # The encoding label stays outside the hashed body. verify()
+            # still rebuilds that body from the original keys, so a legacy
+            # receipt is not rewritten when this field is absent or present.
+            out_digest = _tensor_digest(out, encoding=digest_encoding)
             body = {
                 "seq": seq,
                 "op": op,
                 "in_shape": list(x.shape),
                 "in_dtype": str(x.dtype).replace("torch.", ""),
                 "eps": float(eps),
-                "out_digest": _tensor_digest(out),
+                "out_digest": out_digest,
                 "prev": prev,
             }
             digest = self._digest_body(body)
-            rec = dict(body, digest=digest, ts=time.time())
+            rec = dict(
+                body,
+                digest=digest,
+                ts=time.time(),
+                tensor_digest_encoding=digest_encoding,
+            )
             sig = _maybe_sign(body, sign_key, organ)
             if sig is not None:
                 rec["signature"] = sig
@@ -209,6 +275,7 @@ class ReceiptChain:
                 policy_id=policy_id,
                 sign_key=sign_key,
                 organ=organ,
+                digest_encoding=digest_encoding,
             )
             if binding is not None:
                 rec["receipt"] = binding
