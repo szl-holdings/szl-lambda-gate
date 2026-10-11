@@ -1,0 +1,47 @@
+{
+  "schema": "szl.native-kernel-card-projection/v1",
+  "evidence_class": "UNSIGNED_SOURCE_PRESENTATION",
+  "source_repository": "szl-holdings/szl-lambda-gate",
+  "base_revision": "42482ce4539b86c6cd0c6f5129c142a5dfdb46ec",
+  "source_path": "hf-kernels/szl-governed-norm/README.md",
+  "repo_type": "kernel",
+  "repo_id": "SZLHOLDINGS/szl-governed-norm",
+  "before_sha256": "36f945ee8b8e71e7c484d344bce19e4ae977113e81a8602b33177742df390743",
+  "after_sha256": "45e544fd0af376408d84040272a21f633386b7fbecdc152efddb4d6e6068b97d",
+  "frontmatter_sha256": "960b914c18220e16dbfe254565c98590e152751efa95c500fe6a2bc52338d75f",
+  "preserved_technical_body_sha256": "cdf62caa1cf9d18d87d2dc1a787b8c1658eb0b212d1075ef348fafa82566850a",
+  "original_bytes_reconstructable": true,
+  "native_art": {
+    "repository": "szl-holdings/szl-brand",
+    "revision": "27d12e77fc0f9f1a0e5fae8b34adf2380d51d070",
+    "path": "kit/logos/orbit-v2/suite/szl-icon-32.svg",
+    "sha256": "6e2b7d72a3af3d9602b79de41df0194ede6496a9661f057108ec224c0efc92e6",
+    "render_width": 40,
+    "render_height": 40,
+    "license": "CC-BY-4.0",
+    "license_scope": "SZL artwork"
+  },
+  "publisher_changed": false,
+  "technical_body_changed": false,
+  "metadata_changed": false,
+  "kernel_api_changed": false,
+  "contract_files_changed": false,
+  "code_or_build_pin_changed": false,
+  "kernel_runtime_qualification": "NOT_PERFORMED_BY_THIS_PRESENTATION_CHANGE",
+  "provider_publication": "NOT_ESTABLISHED_BY_THIS_SOURCE_RECORD",
+  "prior_native_card_readback": {
+    "revision": "7d47f136e4122361b8154be0b26f7fb57065c57e",
+    "readme_sha256": "36f945ee8b8e71e7c484d344bce19e4ae977113e81a8602b33177742df390743",
+    "observed_at": "2026-10-11T13:33:23.328333+00:00",
+    "matches_base_source_card": true
+  },
+  "retained_loading_revision": "fe16433d44be03177167e8355c43a4bfdc63e03e",
+  "retained_contract_sha256": "c11417196f22d178827b980d64bcc307c84a93f17d1229dea907b45c05719924",
+  "canonical_publisher": {
+    "repository": "szl-holdings/.github",
+    "observed_revision": "3ef11ccd08c8350ff837c83735c802ff4d8323f9",
+    "workflow": ".github/workflows/hf-kernel-card-publish-v2.yml",
+    "scope": "Existing two-target scheduled/manual native README and contract writer"
+  },
+  "publication_hold": "The established controller must admit merged source lineage, authenticate its existing writer, retain builds, push only README.md and contract.json through ordinary Git, compare both files, and run the exact published-revision selfcheck. This source change does not advance the retained loading pin or replace a native kernel with its separate model mirror."
+}
