@@ -16,8 +16,7 @@ HONESTY:
   it proves authorship. DSSE signing is a separate, out-of-band concern.
 - Receipts are kept in an in-process, append-only chain. Nothing is written
   to disk or the network from inside the kernel.
-- Stdlib + torch (+ numpy for the output digest) only — Kernel Hub
-  universal-kernel requirement.
+- Stdlib + torch only — Kernel Hub universal-kernel requirement.
 - The canonical szl-receipt v0.2.0 evidence binding (``emit_receipt``) is
   ADDITIVE and IMPORT-GUARDED: with szl-receipt absent it returns ``None`` and
   the kernel runs unchanged. It binds subject / input-digest / output-digest /
@@ -27,6 +26,7 @@ HONESTY:
 """
 import hashlib
 import json
+import struct
 import threading
 import time
 from typing import Any, Dict, List, Optional, Union
@@ -82,6 +82,23 @@ TENSOR_DIGEST_CLASS_BYTE = "class-byte-v1"
 TENSOR_DIGEST_DEFAULT = TENSOR_DIGEST_CLASS_BYTE
 
 
+def _update_tensor_bytes(h, tensor: torch.Tensor) -> None:
+    """Hash native-endian uint8 or int64 tensor bytes without NumPy.
+
+    Bounded chunks preserve the historical byte stream without building a
+    Python list for the entire output tensor.
+    """
+    flat = tensor.cpu().contiguous().reshape(-1)
+    for chunk in flat.split(4096):
+        values = chunk.tolist()
+        if flat.dtype == torch.uint8:
+            h.update(bytes(values))
+        elif flat.dtype == torch.int64:
+            h.update(struct.pack(f"={len(values)}q", *values))
+        else:
+            raise TypeError(f"unsupported tensor digest dtype: {flat.dtype}")
+
+
 def _tensor_digest(
     t: torch.Tensor,
     decimals: int = 6,
@@ -111,9 +128,9 @@ def _tensor_digest_legacy(t: torch.Tensor, decimals: int = 6) -> str:
     remains so those historical hashes can still be reproduced.
     """
     flat = t.detach().to(torch.float32).reshape(-1)
-    scaled = torch.round(flat * (10 ** decimals)).to(torch.int64).cpu().numpy().tobytes()
+    scaled = torch.round(flat * (10 ** decimals)).to(torch.int64)
     h = hashlib.sha3_256()
-    h.update(scaled)
+    _update_tensor_bytes(h, scaled)
     return h.hexdigest()
 
 
@@ -136,8 +153,8 @@ def _tensor_digest_class_byte(t: torch.Tensor, decimals: int = 6) -> str:
         finite, torch.round(flat * (10 ** decimals)), torch.zeros_like(flat)
     ).to(torch.int64)
     h = hashlib.sha3_256()
-    h.update(cls.cpu().numpy().tobytes())
-    h.update(scaled.cpu().numpy().tobytes())
+    _update_tensor_bytes(h, cls)
+    _update_tensor_bytes(h, scaled)
     return h.hexdigest()
 
 
@@ -172,7 +189,7 @@ def emit_receipt(
 
     ADDITIVE and IMPORT-GUARDED: returns ``None`` when szl-receipt is not
     installed, so this universal Kernel-Hub kernel still imports and runs on
-    stdlib + torch + numpy alone. When szl-receipt is present it binds an
+    stdlib + torch alone. When szl-receipt is present it binds an
     EVIDENCE trail and wraps it in a DSSE envelope via ``sign_receipt``:
 
         subject        organ / norm-call id (who/what emitted this)
@@ -265,7 +282,7 @@ class ReceiptChain:
                 rec["signature"] = sig
             # ADDITIVE canonical szl-receipt v0.2.0 evidence binding. Import-
             # guarded: None when szl-receipt is absent, so the universal kernel
-            # keeps working on stdlib + torch + numpy only. Binds subject /
+            # keeps working on stdlib + torch only. Binds subject /
             # input-digest / output-digest / policy-id / energy; energy is
             # "UNAVAILABLE" (no joules measured here). It does NOT enter the
             # SHA3-256 chain body, so verify() is unaffected.
