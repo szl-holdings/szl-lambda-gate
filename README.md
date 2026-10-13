@@ -25,7 +25,7 @@ license: apache-2.0
 [Product](https://a-11-oy.com) · [Proof](https://a11oy.net) · [GitHub organization](https://github.com/szl-holdings)
 <!-- /szl:header -->
 
-> **GitHub mirror** of the Kernel Hub kernel published at **[huggingface.co/SZLHOLDINGS/szl-lambda-gate](https://huggingface.co/SZLHOLDINGS/szl-lambda-gate)**. The Hugging Face repo is the canonical `get_kernel` source; this repository mirrors the same source of truth.
+> **Source of truth** for the Kernel Hub kernel **[huggingface.co/kernels/SZLHOLDINGS/szl-lambda-gate](https://huggingface.co/kernels/SZLHOLDINGS/szl-lambda-gate)**. The `hf-kernel-publish` workflow builds `torch-ext/szl_lambda_gate` into `build/torch-cpu` and `build/torch-universal`, publishes the Hub `main` and `v1` branches, and verifies what `get_kernel(..., version=1)` serves against this repository.
 
 **The Λ (Lambda-Spine) aggregator as a universal kernel — a non-compensatory, *advisory* governance roll-up for the Hugging Face Kernel Hub.**
 
@@ -95,11 +95,7 @@ This is a **universal kernel**: it ships no hand-tuned CUDA/Triton binary. Its d
 import torch
 from kernels import get_kernel
 
-lg = get_kernel(
-    "SZLHOLDINGS/szl-lambda-gate",
-    revision="e33458fd0f8b85545ed352dc25495ecd00973b60",
-    trust_remote_code=True,
-)
+lg = get_kernel("SZLHOLDINGS/szl-lambda-gate", version=1, trust_remote_code=True)
 
 axes = torch.tensor([0.9, 0.8, 0.95])         # axis scores in [0,1]
 score = lg.lambda_aggregate(axes)             # Λ(x) ∈ [0,1]
@@ -255,8 +251,10 @@ Apache-2.0 — see [`LICENSE`](./LICENSE). Copyright 2026 SZL Holdings.
 - [SZL organization inventory](https://huggingface.co/SZLHOLDINGS)
 
 These are navigation links, not runtime or green-status claims. The quickstart
-pins the Hub revision observed during this audit; independently verify the
-revision before advancing it. No companion Space availability is asserted here.
+loads the `v1` branch of the kernel repository. To pin an exact build, record the
+current `v1` commit (`HfApi().list_repo_refs("SZLHOLDINGS/szl-lambda-gate",
+repo_type="kernel")`) and pass it as `revision=`; commits of the model repository
+are not kernel revisions. No companion Space availability is asserted here.
 
 ## Retained governed-norm compatibility contract
 

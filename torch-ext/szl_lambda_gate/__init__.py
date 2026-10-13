@@ -16,7 +16,7 @@ Load from the Hub:
     import torch
     from kernels import get_kernel
 
-    lg = get_kernel("SZLHOLDINGS/szl-lambda-gate")
+    lg = get_kernel("SZLHOLDINGS/szl-lambda-gate", version=1, trust_remote_code=True)
     axes = torch.tensor([0.9, 0.8, 0.95])        # axis scores in [0,1]
     score = lg.lambda_aggregate(axes)            # Λ(x) ∈ [0,1]
     res = lg.lambda_gate(axes, threshold=0.5)    # ADVISORY pass/fail

@@ -1,0 +1,53 @@
+{
+  "schema": "szl.hf-kernels/v1",
+  "$comment": "Consumed by .github/workflows/hf-kernel-publish.yml via scripts/szl_kernel_publish.py. This repository is the only writer of the two Hub kernel repos below. szl-governed-norm is published from its canonical source, the szl_lambda_gate.governed_norm subpackage, as a standalone package. model_twin is added when the release-only model mirror (hf-mirror.yml) is retired.",
+  "kernels": [
+    {
+      "repo_id": "SZLHOLDINGS/szl-lambda-gate",
+      "name": "szl-lambda-gate",
+      "version": 1,
+      "license": "Apache-2.0",
+      "source_repository": "szl-holdings/szl-lambda-gate",
+      "packages": [
+        { "src": "torch-ext/szl_lambda_gate", "name": "szl_lambda_gate" }
+      ],
+      "card": "hf/kernel-card.md",
+      "license_file": "LICENSE",
+      "extra_files": {
+        "build.toml": "build.toml",
+        "spec/szl.lambda.v1.json": "spec/szl.lambda.v1.json",
+        "spec/lambda_v1_vectors.json": "spec/lambda_v1_vectors.json",
+        "reference/szl_lambda_v1.py": "reference/szl_lambda_v1.py"
+      },
+      "prune_paths": [
+        "distribution.json",
+        "source/LICENSE",
+        "OPERATIONAL.json",
+        "BENCH.laptop-blackwell.json"
+      ],
+      "python_depends": [],
+      "smoke": "hf/kernel_smoke.py"
+    },
+    {
+      "repo_id": "SZLHOLDINGS/szl-governed-norm",
+      "name": "szl-governed-norm",
+      "version": 1,
+      "license": "Apache-2.0",
+      "source_repository": "szl-holdings/szl-lambda-gate",
+      "packages": [
+        { "src": "torch-ext/szl_lambda_gate/governed_norm", "name": "szl_governed_norm" }
+      ],
+      "card": "hf-kernels/szl-governed-norm/README.md",
+      "license_file": "LICENSE",
+      "extra_files": {
+        "hf-kernels/szl-governed-norm/contract.json": "contract.json"
+      },
+      "prune_paths": [
+        "OPERATIONAL.json",
+        "BENCH.laptop-blackwell.json"
+      ],
+      "python_depends": [],
+      "smoke": "hf/governed_norm_smoke.py"
+    }
+  ]
+}
