@@ -11,6 +11,9 @@ tags:
   - doi:10.5281/zenodo.19944926
 ---
 
+<p><img src="https://raw.githubusercontent.com/szl-holdings/szl-brand/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/kit/logos/orbit-v2/suite/szl-icon-32.svg" alt="SZL Holdings" width="40" height="40" /></p>
+
+
 # {{KERNEL_NAME}}
 
 **Λ, a governance aggregator, as a pure-PyTorch (noarch) kernel.** A differentiable,
@@ -103,3 +106,5 @@ in GitHub Actions for the source commit.
 Apache-2.0. Copyright 2026 SZL Holdings. Concept DOI
 [10.5281/zenodo.19944926](https://doi.org/10.5281/zenodo.19944926); see `CITATION.cff` in
 the GitHub repository.
+
+Artwork: SZL Orbit · © 2026 SZL Holdings / Stephen Lutar · [CC BY 4.0](https://github.com/szl-holdings/szl-brand/blob/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/kit/LICENSE) · [Trademark notice](https://github.com/szl-holdings/szl-brand/blob/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/NOTICE).
