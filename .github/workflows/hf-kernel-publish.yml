@@ -1,0 +1,279 @@
+name: hf-kernel-publish
+
+# SZL canonical kernel publisher (template v1, 2026-10-13). Self-contained per repo;
+# upstream to szl-holdings/.github as a reusable workflow once that lane is free.
+#
+# GitHub is the only source. For each kernel in .github/hf-kernels.json:
+#   pull_request        -> build both noarch variants from torch-ext/ and load them with
+#                          kernels==0.17.2 + CPU torch (no Hub access, no secret)
+#   release (published) -> build, publish the kernel repo (repo_type kernel) on main AND the
+#                          version branch v<major>, verify in a fresh job through get_kernel,
+#                          then turn the model twin into a pointer (README only, no build/)
+#   workflow_dispatch   -> repair: the same for source_ref (default: latest release);
+#                          dry_run = build + candidate commits + authenticated push --dry-run
+#   schedule (weekly)   -> drift guard: re-verify what get_kernel serves against GitHub and
+#                          fail if the latest release changed the kernel but was not published
+#
+# Writer rules: fast-forward git pushes only (no force, no repo creation, no settings);
+# build/ on the kernel repo is owned entirely by this workflow; other Hub paths are kept
+# unless the config prunes them. Credential: secrets.HF_TOKEN, only in the writing steps.
+
+on:
+  pull_request:
+    paths:
+      - "torch-ext/**"
+      - "hf/**"
+      - "hf-kernels/**"
+      - "spec/**"
+      - "reference/**"
+      - "build.toml"
+      - "LICENSE"
+      - ".github/hf-kernels.json"
+      - ".github/workflows/hf-kernel-publish.yml"
+      - "scripts/szl_kernel_publish.py"
+      - "tests/test_szl_kernel_publish.py"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Tag, branch or commit on the default branch to publish (empty = latest release)
+        required: false
+        default: ""
+      only:
+        description: Limit to one kernel repo_id (e.g. SZLHOLDINGS/szl-maskmod)
+        required: false
+        default: ""
+      dry_run:
+        description: Plan only (candidate commits + push --dry-run); writes nothing
+        type: boolean
+        required: false
+        default: false
+      skip_model_twin:
+        description: Do not touch the model-repo twin
+        type: boolean
+        required: false
+        default: false
+  schedule:
+    - cron: "41 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hf-kernel-publish-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'schedule' && 'drift' || 'hub-write') }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: "3.12"
+  KERNELS_VERSION: "0.17.2"
+  TORCH_VERSION: "2.10.0"
+  TORCH_INDEX: https://download.pytorch.org/whl/cpu
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      mode: ${{ steps.resolve.outputs.mode }}
+      source_ref: ${{ steps.resolve.outputs.source_ref }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
+      kernels: ${{ steps.matrix.outputs.kernels }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Offline publisher tests
+        run: python -m unittest discover -s tests -p "test_szl_kernel_publish.py" -v
+      - name: Resolve mode and source commit
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: python scripts/szl_kernel_publish.py resolve-source
+      - name: Kernel matrix
+        id: matrix
+        env:
+          ONLY: ${{ inputs.only }}
+        run: python scripts/szl_kernel_publish.py plan --only "$ONLY"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.mode == 'check' || needs.plan.outputs.mode == 'plan' || needs.plan.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ${{ fromJson(needs.plan.outputs.kernels) }}
+    env:
+      KERNEL: ${{ matrix.kernel.repo_id }}
+      SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install CPU torch and the pinned kernels loader
+        run: |
+          python -m pip install --disable-pip-version-check --index-url "$TORCH_INDEX" "torch==${TORCH_VERSION}"
+          python -m pip install --disable-pip-version-check "kernels==${KERNELS_VERSION}"
+      - name: Build torch-cpu + torch-universal from Git objects
+        run: >-
+          python scripts/szl_kernel_publish.py build --kernel "$KERNEL" --source "$SOURCE_SHA"
+          --out "dist/${{ matrix.kernel.slug }}" --receipt "receipts/build-${{ matrix.kernel.slug }}.json"
+      - name: Load both variants with kernels and run the smoke hook
+        run: >-
+          python scripts/szl_kernel_publish.py check-local --kernel "$KERNEL" --source "$SOURCE_SHA"
+          --dist "dist/${{ matrix.kernel.slug }}" --receipt "receipts/check-local-${{ matrix.kernel.slug }}.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: kernel-build-${{ matrix.kernel.slug }}-${{ github.run_id }}
+          path: |
+            dist/${{ matrix.kernel.slug }}
+            receipts/
+          if-no-files-found: warn
+          retention-days: 30
+
+  publish:
+    needs: [plan, build]
+    if: needs.plan.outputs.mode == 'plan' || needs.plan.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ${{ fromJson(needs.plan.outputs.kernels) }}
+    env:
+      KERNEL: ${{ matrix.kernel.repo_id }}
+      SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      # Rebuilt in-process from the same Git objects (deterministic), so no artifact is trusted.
+      - name: Publish kernel repo main + v${{ matrix.kernel.version }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          DRY_RUN: ${{ needs.plan.outputs.mode == 'plan' }}
+        run: |
+          set -euo pipefail
+          extra=()
+          if [ "$DRY_RUN" = "true" ]; then extra+=(--dry-run); fi
+          python scripts/szl_kernel_publish.py publish --kernel "$KERNEL" --source "$SOURCE_SHA" \
+            --receipt "receipts/publish-${{ matrix.kernel.slug }}.json" "${extra[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: kernel-publish-${{ matrix.kernel.slug }}-${{ github.run_id }}
+          path: receipts/
+          if-no-files-found: warn
+          retention-days: 90
+
+  verify:
+    needs: [plan, publish]
+    if: >-
+      always() && needs.plan.result == 'success' &&
+      (needs.plan.outputs.mode == 'drift' ||
+       (needs.plan.outputs.mode == 'publish' && needs.publish.result == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ${{ fromJson(needs.plan.outputs.kernels) }}
+    env:
+      KERNEL: ${{ matrix.kernel.repo_id }}
+      MODE: ${{ needs.plan.outputs.mode }}
+      SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      HF_TOKEN: ""  # consumers load anonymously; so does the verifier
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Fresh consumer environment (CPU torch + kernels==${{ env.KERNELS_VERSION }})
+        run: |
+          python -m pip install --disable-pip-version-check --index-url "$TORCH_INDEX" "torch==${TORCH_VERSION}"
+          python -m pip install --disable-pip-version-check "kernels==${KERNELS_VERSION}"
+      - name: get_kernel(version=${{ matrix.kernel.version }}) serves the GitHub source
+        env:
+          KERNELS_CACHE: ${{ runner.temp }}/kcache-version
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "drift" ]; then src=auto; rel=(--release-sha "$SOURCE_SHA"); else src="$SOURCE_SHA"; rel=(); fi
+          python scripts/szl_kernel_publish.py verify --kernel "$KERNEL" --ref version --source "$src" \
+            --default-branch "$DEFAULT_BRANCH" "${rel[@]}" --receipt "receipts/verify-version-${{ matrix.kernel.slug }}.json"
+      - name: get_kernel(revision="main") serves the same source
+        env:
+          KERNELS_CACHE: ${{ runner.temp }}/kcache-main
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "drift" ]; then src=auto; rel=(--release-sha "$SOURCE_SHA"); else src="$SOURCE_SHA"; rel=(); fi
+          python scripts/szl_kernel_publish.py verify --kernel "$KERNEL" --ref main --source "$src" \
+            --default-branch "$DEFAULT_BRANCH" "${rel[@]}" --receipt "receipts/verify-main-${{ matrix.kernel.slug }}.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: kernel-verify-${{ matrix.kernel.slug }}-${{ github.run_id }}
+          path: receipts/
+          if-no-files-found: warn
+          retention-days: 90
+
+  model-twin:
+    needs: [plan, verify]
+    if: needs.plan.outputs.mode == 'publish' && needs.verify.result == 'success' && inputs.skip_model_twin != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ${{ fromJson(needs.plan.outputs.kernels) }}
+    env:
+      KERNEL: ${{ matrix.kernel.repo_id }}
+      SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: matrix.kernel.twin
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: matrix.kernel.twin
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Point the model twin at the verified kernel repo
+        if: matrix.kernel.twin
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: >-
+          python scripts/szl_kernel_publish.py twin --kernel "$KERNEL" --source "$SOURCE_SHA"
+          --receipt "receipts/twin-${{ matrix.kernel.slug }}.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && matrix.kernel.twin
+        with:
+          name: kernel-twin-${{ matrix.kernel.slug }}-${{ github.run_id }}
+          path: receipts/
+          if-no-files-found: warn
+          retention-days: 90
