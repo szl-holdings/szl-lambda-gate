@@ -18,7 +18,7 @@ def test_quickstart_pins_the_first_class_kernel_revision():
     revision = contract["observed_revision"]
 
     assert re.fullmatch(r"[0-9a-f]{40}", revision)
-    assert revision == "fe16433d44be03177167e8355c43a4bfdc63e03e"
+    assert revision == "0de8d68f3f4f806586f5ef258d1ab58ab6ba0aee"  # v1 commit published by hf-kernel-publish (both variants)
     assert NON_KERNEL_REVISION not in card
     assert f'revision="{revision}"' in card
     assert "trust_remote_code=True" in card
