@@ -1,6 +1,6 @@
 {
   "schema": "szl.hf-kernels/v1",
-  "$comment": "Consumed by .github/workflows/hf-kernel-publish.yml via scripts/szl_kernel_publish.py. This repository is the only writer of the two Hub kernel repos below. szl-governed-norm is published from its canonical source, the szl_lambda_gate.governed_norm subpackage, as a standalone package. model_twin is added when the release-only model mirror (hf-mirror.yml) is retired.",
+  "$comment": "Consumed by .github/workflows/hf-kernel-publish.yml via scripts/szl_kernel_publish.py. This repository is the only writer of the two Hub kernel repos below. szl-governed-norm is published from its canonical source, the szl_lambda_gate.governed_norm subpackage, as a standalone package. Each model twin becomes a pointer card (no build/, no torch-ext/) only after get_kernel verification passes.",
   "kernels": [
     {
       "repo_id": "SZLHOLDINGS/szl-lambda-gate",
@@ -26,7 +26,25 @@
         "BENCH.laptop-blackwell.json"
       ],
       "python_depends": [],
-      "smoke": "hf/kernel_smoke.py"
+      "smoke": "hf/kernel_smoke.py",
+      "model_twin": {
+        "repo_id": "SZLHOLDINGS/szl-lambda-gate",
+        "mode": "pointer",
+        "card": "hf/model-twin-pointer.md",
+        "prune_paths": [
+          "build/",
+          "torch-ext/",
+          "scripts/",
+          "hf-kernels/",
+          "doctrine.py",
+          "lambda_gate.py",
+          "distribution.json",
+          "source/LICENSE",
+          "OPERATIONAL.json",
+          "BENCH.laptop-blackwell.json",
+          "docs/hf-protected-pr-release.md"
+        ]
+      }
     },
     {
       "repo_id": "SZLHOLDINGS/szl-governed-norm",
@@ -47,7 +65,22 @@
         "BENCH.laptop-blackwell.json"
       ],
       "python_depends": [],
-      "smoke": "hf/governed_norm_smoke.py"
+      "smoke": "hf/governed_norm_smoke.py",
+      "model_twin": {
+        "repo_id": "SZLHOLDINGS/szl-governed-norm",
+        "mode": "pointer",
+        "card": "hf/model-twin-pointer.md",
+        "prune_paths": [
+          "build/",
+          "torch-ext/",
+          "scripts/",
+          "governed_norm.py",
+          "chain.py",
+          "build.toml",
+          "OPERATIONAL.json",
+          "BENCH.laptop-blackwell.json"
+        ]
+      }
     }
   ]
 }

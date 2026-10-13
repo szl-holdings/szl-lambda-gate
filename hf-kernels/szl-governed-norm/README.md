@@ -51,14 +51,23 @@ here as the standalone package `szl_governed_norm` by that repository's
 commit and the sha256 of every file. The former `szl-holdings/szl-governed-norm` GitHub
 repository is archived.
 
-To pin an exact build, take the current commit of the `v1` branch
-(`HfApi().list_repo_refs("SZLHOLDINGS/szl-governed-norm", repo_type="kernel")`) and pass it
-as `revision=`. Commits of the separate model repository are not kernel revisions.
+### Pin an exact build
 
-Earlier cards pinned
-`get_kernel("SZLHOLDINGS/szl-governed-norm", revision="fe16433d44be03177167e8355c43a4bfdc63e03e", trust_remote_code=True)`.
-That July 2026 build ships `build/torch-cpu` only, so it does not load on CUDA hosts, and it
-predates the receipt digest fixes. It still resolves for reproducibility; new code should
-use `version=1`.
+```python
+gn = get_kernel(
+    "SZLHOLDINGS/szl-governed-norm",
+    revision="0de8d68f3f4f806586f5ef258d1ab58ab6ba0aee",
+    trust_remote_code=["SZLHOLDINGS/szl-governed-norm"],
+)
+```
+
+`0de8d68f` is the first `v1` commit built by `hf-kernel-publish` (source
+`szl-holdings/szl-lambda-gate@219ee895`, both variants, verified through `get_kernel`).
+Later releases advance `v1`; take its current commit from
+`HfApi().list_repo_refs("SZLHOLDINGS/szl-governed-norm", repo_type="kernel")` when you
+need a newer pin. Commits of the separate model repository are not kernel revisions.
+
+The earlier pin `fe16433d` (July 2026) ships `build/torch-cpu` only, so it does not load on
+CUDA hosts, and it predates the receipt digest fixes. It still resolves for reproducibility.
 
 Artwork: SZL Orbit · © 2026 SZL Holdings / Stephen Lutar · [CC BY 4.0](https://github.com/szl-holdings/szl-brand/blob/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/kit/LICENSE).
