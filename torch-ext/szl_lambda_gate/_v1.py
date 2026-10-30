@@ -58,7 +58,7 @@ entry is not meant to run inside ``torch.compile``. The legacy compiled weight
 path in ``_lambda._resolve_weights``, which clamps weights to ``finfo.tiny``,
 is outside szl.lambda/v1.
 
-Λ is advisory. Λ uniqueness is Conjecture 1 (open), and nothing here depends on it.
+Λ is advisory. Λ uniqueness is Conjecture 1, machine-checked false as stated. Nothing here depends on it.
 """
 from __future__ import annotations
 

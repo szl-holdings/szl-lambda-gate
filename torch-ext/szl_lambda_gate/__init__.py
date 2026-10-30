@@ -31,13 +31,13 @@ Load from the Hub:
 WHAT Λ IS / IS NOT (HONESTY — SZL Holdings doctrine v11):
   Λ is the weighted-geometric-mean aggregator — a non-compensatory, ADVISORY
   way to roll axis scores in [0,1] into one number (any zeroed axis zeroes the
-  aggregate). It is NOT "proven trust" and NOT a closed theorem: Λ-uniqueness
-  remains Conjecture 1 (OPEN — an unresolved CAUCHY_ND step plus a missing
-  symmetry axiom). Label it honestly everywhere; a gate "pass" is advisory.
+  aggregate). It is NOT "proven trust" and NOT a closed theorem: bare A1-A5
+  uniqueness is Conjecture 1, machine-checked false as stated.
+  Theorem U is conditional. A gate "pass" is advisory.
 
 PROVENANCE: backed by the Lean 4 formalization szl-holdings/lutar-lean
   (749 declarations / 14 axioms / 163 tracked sorries),
-  DOI 10.5281/zenodo.20434308 (lutar-lean). Λ uniqueness = Conjecture 1 (open).
+  DOI 10.5281/zenodo.20434308 (lutar-lean). Bare A1-A5 uniqueness is Conjecture 1, machine-checked false as stated. Theorem U is conditional.
 """
 from typing import Optional
 
@@ -99,7 +99,7 @@ __all__ = [
 # emit_receipt, receipt_* helpers, selfcheck, layers) lives under
 # ``szl_lambda_gate.governed_norm``. These are a DIFFERENT kernel family from Λ
 # (normalization, not the Λ aggregator); Λ itself remains Conjecture 1
-# (advisory, uniqueness OPEN) and is never described as proven trust.
+# (advisory, bare statement false as stated; Theorem U conditional) and is never described as proven trust.
 rms_norm = governed_norm.rms_norm
 layer_norm = governed_norm.layer_norm
 fused_add_rms_norm = governed_norm.fused_add_rms_norm
@@ -107,7 +107,7 @@ fused_add_rms_norm = governed_norm.fused_add_rms_norm
 __version__ = "0.2.0"
 DOCTRINE_FOOTER = (
     "SZL Holdings · Λ = Conjecture 1 (ADVISORY, weighted geometric mean) · "
-    "uniqueness OPEN · NOT proven trust · honesty over checklist"
+    "bare statement false as stated; Theorem U conditional · NOT proven trust · honesty over checklist"
 )
 PROVENANCE = {
     "lean_repo": "szl-holdings/lutar-lean",
@@ -115,7 +115,7 @@ PROVENANCE = {
     "lean_axioms": 14,
     "lean_tracked_sorries": 163,
     "doi_lutar_lean": "10.5281/zenodo.20434308",
-    "lambda_status": "Conjecture 1 (open) — uniqueness unproven; advisory only",
+    "lambda_status": "Conjecture 1 is machine-checked false as stated; Theorem U is conditional; advisory only",
 }
 
 
