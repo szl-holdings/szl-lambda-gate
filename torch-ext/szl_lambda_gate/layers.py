@@ -13,7 +13,7 @@ instance it is bound to (set by the host model) and only defines `forward`.
 
 HONESTY: `LambdaGate` emits an ADVISORY governance signal (the weighted
 geometric mean Λ plus a pass/fail vs threshold). Λ is NOT proven trust; its
-uniqueness is Conjecture 1 (open).
+uniqueness is Conjecture 1, machine-checked false as stated.
 """
 import torch
 from torch import nn

@@ -10,7 +10,7 @@ lambda_aggregator.py — Λ(x), the Lambda-Spine aggregator (canonical D2, v11 �
 
 Properties carried (Lutar/Axioms.lean):
   A1 IsMonotone · A2 IsHomogeneous (degree 1) · A3 IsEgyptianExact (Λ(c,…,c)=c) · A4 IsBounded (Λ ≤ max xᵢ)
-Λ-uniqueness remains Conjecture 1 (open CAUCHY_ND sorry + missing symmetry axiom).
+Λ-uniqueness remains Conjecture 1 (machine-checked false as stated; Theorem U is conditional).
 """
 from __future__ import annotations
 

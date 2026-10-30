@@ -16,9 +16,8 @@ WHAT Λ IS / IS NOT (HONESTY — SZL Holdings doctrine v11):
   combine axis scores in [0,1] into one number. It is ADVISORY governance
   signal — a conservative roll-up where any single zeroed axis drives the
   aggregate to 0. It is NOT "proven trust" and NOT a closed theorem. Its
-  *uniqueness* (that the weighted geometric mean is the only aggregator
-  satisfying the carried axioms) remains Conjecture 1 — OPEN (an unresolved
-  CAUCHY_ND step plus a missing symmetry axiom in the Lean development). Do
+  *uniqueness* under bare A1-A5 is Conjecture 1, machine-checked false as
+  stated. Theorem U is conditional. Do
   not describe Λ as proven trust anywhere.
 
 PRIOR ART (honest attribution): the weighted geometric mean as a *less-
@@ -36,7 +35,7 @@ PRIOR ART (honest attribution): the weighted geometric mean as a *less-
 PROVENANCE: backed by the Lean 4 formalization szl-holdings/lutar-lean
   (749 declarations / 14 axioms / 163 tracked sorries),
   DOI 10.5281/zenodo.20434308 (lutar-lean).
-  Λ uniqueness = Conjecture 1 (open).
+  Bare A1-A5 uniqueness is Conjecture 1, machine-checked false as stated. Theorem U is conditional.
 
 Axioms carried (Lutar/Axioms.lean), available below as runtime self-checks:
   A1 IsMonotone        — Λ is non-decreasing in each axis
@@ -195,7 +194,7 @@ def lambda_aggregate(
     validated, coded errors use :func:`szl_lambda_gate._v1.lambda_v1`.
 
     HONESTY: this is a non-compensatory governance roll-up, NOT proven trust.
-    Λ-uniqueness is Conjecture 1 (open).
+    Λ-uniqueness is Conjecture 1, machine-checked false as stated.
     """
     _check_axes(axes)
     in_dtype = axes.dtype
@@ -262,7 +261,7 @@ def lambda_gate(
     front rather than silently producing a wrong pass mask.
 
     HONESTY: a "pass" is an ADVISORY signal only. Λ is the weighted-geometric-
-    mean aggregator; its uniqueness is Conjecture 1 (open). Do not treat a
+    mean aggregator; its uniqueness is Conjecture 1, machine-checked false as stated. Do not treat a
     pass as proven trust or a closed theorem.
     """
     threshold = _resolve_threshold(threshold, stacklevel=2)
@@ -308,7 +307,7 @@ def lambda_gate_batch(
         advisory  — always True (NOT proven trust)
 
     HONESTY: the pass mask is an ADVISORY, non-compensatory signal. A "pass"
-    is not proven trust; Λ-uniqueness is Conjecture 1 (open).
+    is not proven trust; Λ-uniqueness is Conjecture 1, machine-checked false as stated.
     """
     threshold = _resolve_threshold(threshold, stacklevel=2)
     _check_axes(candidates)
@@ -518,7 +517,7 @@ def selfcheck(
         adversarial      — {trials, violation} from a random falsification search
                            (violation is None when no violation was found)
         advisory         — always True
-        lambda_status    — Conjecture 1 (open) honesty string
+        lambda_status    — Conjecture 1, machine-checked false as stated honesty string
 
     HONESTY: these are EMPIRICAL checks on sampled inputs, NOT a proof of
     Λ-uniqueness (Conjecture 1, open). A clean run is evidence, not proof.
@@ -538,7 +537,7 @@ def selfcheck(
         "all_axioms_hold": all(axioms.values()) and violation is None,
         "adversarial": {"trials": int(trials), "violation": violation},
         "advisory": True,
-        "lambda_status": "Conjecture 1 (open) — uniqueness unproven; advisory only",
+        "lambda_status": "Conjecture 1 is machine-checked false as stated; Theorem U is conditional; advisory only",
     }
 
 
