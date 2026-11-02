@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Correctness + governance tests for szl_governed_norm.
 
-Run: python -m pytest tests/ -q   (or: python tests/test_norm.py)
+Run: python -m pytest tests/ -q   (or: python tests/test_governed_norm.py)
 Verifies numerical equivalence to PyTorch references and that governed
 receipts hash-chain and verify. CPU-only so it runs anywhere.
 """
