@@ -146,16 +146,18 @@ def _resolve_weights(
             raise ValueError("weights must all be finite (no NaN/Inf)")
         if bool(torch.any(wf <= 0.0)):
             raise ValueError("weights must be strictly positive (wᵢ > 0)")
-        sw = wf.sum()
-        if not bool(sw > 0.0):
-            raise ValueError("weights must sum to a positive value")
-        return wf / sw
+        # Positive finite elements can still overflow their unscaled sum.
+        # Normalize the scale first so such weights cannot collapse to zero
+        # and turn every nonzero axis vector into an advisory score of 1.
+        wf = wf / wf.max()
+        return wf / wf.sum()
     # Compiled path stays in tensor-land. Non-positive weights are a misuse;
     # clamp them away from zero so the graph does not break, then normalize.
     # This path is outside szl.lambda/v1; _v1.lambda_v1 validates before it
     # gets here and is not meant to run under torch.compile.
     wf = torch.where(torch.isfinite(wf), wf, torch.ones_like(wf))
     wf = torch.clamp(wf, min=torch.finfo(wf.dtype).tiny)
+    wf = wf / wf.max()
     return wf / wf.sum()
 
 
