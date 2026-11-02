@@ -6,7 +6,7 @@ abstract: >-
   Kernel Hub. A pure-PyTorch weighted geometric mean over axis scores in [0,1]
   with an advisory governance gate and the four carried axioms (A1-A4) as
   runtime self-checks. Λ is a non-compensatory, advisory signal — not proven
-  trust; Λ-uniqueness remains Conjecture 1 (open).
+  trust; Λ-uniqueness remains Conjecture 1, machine-checked false as stated.
 type: software
 version: 0.2.0
 license: Apache-2.0

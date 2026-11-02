@@ -3,7 +3,7 @@
   "title": "Λ, the weighted geometric mean, as a validated contract",
   "status": "ADVISORY",
   "uniqueness": "CONJECTURE_1_NOT_USED",
-  "honesty": "Λ is an advisory, non-compensatory roll-up. Λ uniqueness is Conjecture 1 (open); nothing in this contract depends on it.",
+  "honesty": "Λ is an advisory, non-compensatory roll-up. Λ uniqueness is Conjecture 1, machine-checked false as stated; nothing in this contract depends on it.",
   "form": "weighted_geometric_mean",
   "definition": "Λ_w(x) = ∏_k x_k^{w_k}",
   "algorithm": {

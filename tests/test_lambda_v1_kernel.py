@@ -11,7 +11,7 @@ Covers:
   * the ``None`` threshold sentinel: every entry point that defaulted to 0.5 warns once
     when the threshold is omitted and otherwise behaves exactly as before;
   * trace safety of that path under ``torch.compile(fullgraph=True)``;
-  * ``selfcheck()`` still reports Conjecture 1 (open).
+  * ``selfcheck()`` still reports Conjecture 1, machine-checked false as stated.
 
 Vectors are mapped into the kernel's input form: a list of real numbers becomes a
 float64 tensor. Anything else (None, or a list holding a bool, None or a string) is
@@ -525,11 +525,15 @@ def test_threshold_path_is_trace_safe_under_fullgraph(entry):
 # ------------------------------------------------------------------ honesty --
 
 
-def test_selfcheck_still_reports_conjecture_1_open():
+def test_selfcheck_reports_conjecture_1_false_as_stated():
     sc = lg.selfcheck()
-    assert "Conjecture 1 (open)" in sc["lambda_status"]
+    assert sc["lambda_status"] == (
+        "Conjecture 1 is machine-checked false as stated; Theorem U is conditional; advisory only"
+    )
+    assert "unproven" not in sc["lambda_status"]
+    assert "CAUCHY_ND" not in sc["lambda_status"]
     assert sc["all_axioms_hold"] is True and sc["advisory"] is True
-    assert "Conjecture 1 (open)" in lg.PROVENANCE["lambda_status"]
+    assert sc["lambda_status"] == lg.PROVENANCE["lambda_status"]
 
 
 STRICT_PROOF = re.compile(r"\bprov(en|ed|able|ably)\b|\btheorem\b", re.IGNORECASE)

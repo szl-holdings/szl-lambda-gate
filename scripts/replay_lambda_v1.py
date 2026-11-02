@@ -25,8 +25,8 @@ SPEC = ROOT / "spec" / "szl.lambda.v1.json"
 REFERENCE = ROOT / "reference" / "szl_lambda_v1.py"
 FIXTURE_ORIGIN_COMMIT = "6a874e11ab948a47e982be3651b8021ba6b82e19"
 VECTOR_BLOB = "d99cc31298b8fad424d6783bdd2295ca9d7adab2"
-REFERENCE_BLOB = "8396d8bee64f8aa4431e215dba203eae25225fc2"
-CONTRACT_BLOB = "57c12a3c9233a4a1fe788e9cb2329e941f4e6be5"
+REFERENCE_BLOB = "458677c035281c1680062b7f6c54c9b640197930"
+CONTRACT_BLOB = "69918f7686f2f874821ac7253642783b67db17ce"
 CANONICAL_SHA256 = "61bfb0410b9f0eaab0eb9f22f29cb7cb13cfde8c083fe308d895565d6ba9ebd4"
 UNIT = "dimensionless"  # Replay envelope label; the frozen fixture has no unit field.
 

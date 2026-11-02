@@ -31,7 +31,7 @@ returns ``(verdict, code)``:
 * GO / None if log Λ > log tau, otherwise NO_GO / BELOW_TAU.
 
 The compare is in log space on the unrounded value. Λ is advisory. Λ
-uniqueness is Conjecture 1 (open) and nothing here depends on it.
+uniqueness is Conjecture 1, machine-checked false as stated. Nothing here depends on it.
 
 Stdlib only. Other implementations port this file; they must agree on every
 error code and verdict, and on values within each vector's ``value_tol``.

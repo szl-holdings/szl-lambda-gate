@@ -74,7 +74,7 @@ do not resolve here.
 Λ(x) = ∏ xᵢ^wᵢ with Σ wᵢ = 1, wᵢ > 0. It is a non-compensatory, ADVISORY roll-up: any
 zero (or, in the legacy entry, non-finite) axis drives the aggregate to 0. A gate pass is
 an advisory signal that the host must enforce; it is not proven trust. Λ uniqueness
-remains **Conjecture 1 (open)**. The A1-A4 self-checks are empirical evidence on sampled
+remains **Conjecture 1, machine-checked false as stated**. The A1-A4 self-checks are empirical evidence on sampled
 inputs, not a proof.
 
 ## API

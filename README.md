@@ -29,7 +29,7 @@ license: apache-2.0
 
 **The Λ (Lambda-Spine) aggregator as a universal kernel — a non-compensatory, *advisory* governance roll-up for the Hugging Face Kernel Hub.**
 
-> Λ is the weighted geometric mean of axis scores in `[0,1]`. Any single zeroed axis drives the whole aggregate to `0`: a conservative, non-compensatory signal. It is **advisory** — *not* proven trust, *not* a closed theorem. **Λ uniqueness = Conjecture 1 (OPEN)**; it is never described as proven anywhere in this repo.
+> Λ is the weighted geometric mean of axis scores in `[0,1]`. Any single zeroed axis drives the whole aggregate to `0`: a conservative, non-compensatory signal. It is **advisory** — *not* proven trust, *not* a closed theorem. **Λ uniqueness = Conjecture 1, machine-checked false as stated. Theorem U is conditional**; it is never described as proven anywhere in this repo.
 
 > **📦 Canonical kernels package (Wave D consolidation).** This repo is the **canonical SZL kernels package**. The former `szl-holdings/szl-governed-norm` (governed RMSNorm/LayerNorm) has been **folded in** here as the [`szl_lambda_gate.governed_norm`](./torch-ext/szl_lambda_gate/governed_norm) subpackage — `rms_norm`, `layer_norm`, `fused_add_rms_norm`, their SHA3-256 hash-chained governance receipts, `ReceiptChain`, `emit_receipt`, and `selfcheck()`. `szl-governed-norm` is now **DEPRECATED** and points here (it was **not deleted**; archiving is a later founder step). The norm kernels are a *different kernel family* from the Λ aggregator; folding them in does not change Λ's status (still Conjecture 1, advisory).
 
@@ -43,7 +43,7 @@ A universal (pure-PyTorch) kernel from [SZL Holdings](https://huggingface.co/SZL
 |---|---|
 | Primary artifact | **Executable software:** a pure-PyTorch weighted-geometric-mean operator, advisory gate, runtime checks, and governed-normalization compatibility package. |
 | Hub tensor artifact | **Surrogate / compatibility artifact:** useful for packaging and inspection, but not evidence of a separately trained production model or broad learned capability. |
-| Formal status | Runtime checks exercise A1-A4 on supplied/sample inputs. Lambda uniqueness remains **Conjecture 1 (OPEN)**; this repository is not a formal verifier or closed proof. |
+| Formal status | Runtime checks exercise A1-A4 on supplied/sample inputs. Lambda uniqueness remains **Conjecture 1, machine-checked false as stated. Theorem U is conditional**; this repository is not a formal verifier or closed proof. |
 | Evidence | Source, tests, self-checks, and receipt/provenance code. Any displayed output is **SAMPLE** until independently executed. |
 | Limits | No speedup, safety, trust, or deployment-readiness claim. A gate result is advisory and must be enforced by the host. |
 
@@ -178,7 +178,7 @@ The torch kernel above predates a written contract, and the estate carries sever
 - **Pinned vectors.** SHA-256 over canonical JSON (sorted keys, compact separators, UTF-8), also recorded in the spec: `61bfb0410b9f0eaab0eb9f22f29cb7cb13cfde8c083fe308d895565d6ba9ebd4`. It is computed over the parsed JSON, so a CRLF checkout gives the same digest.
 - **Conformance.** The reference matches every vector bit for bit. Other implementations must match every error code and verdict exactly, and each value within the vector's `value_tol`.
 - **Not yet v1.** The torch `lambda_aggregate` clamps x > 1, maps NaN and ±Inf to 0 and renormalises weights; `tests/test_lambda_v1_torch_divergence.py` pins each difference. `tests/lambda_aggregator_source.py` is not canonical either.
-- **Honesty.** Λ uniqueness is Conjecture 1 (open). The spec records `"uniqueness": "CONJECTURE_1_NOT_USED"` because nothing in the contract relies on Conjecture 1.
+- **Honesty.** Λ uniqueness is Conjecture 1, machine-checked false as stated. The spec records `"uniqueness": "CONJECTURE_1_NOT_USED"` because nothing in the contract relies on Conjecture 1.
 
 Run a stdlib-only, revision-bound offline replay with
 `python -B -I scripts/replay_lambda_v1.py --output <path-outside-this-checkout>`.
@@ -193,7 +193,7 @@ The separate `python -m pytest -q tests/test_lambda_v1_vectors.py` suite require
 We hold this kernel to a plain-spoken standard:
 
 - **Λ is the weighted-geometric-mean aggregator** — a non-compensatory, **advisory** way to roll axis scores in `[0,1]` into one number.
-- **Λ is NOT "proven trust" and NOT a closed theorem.** Its *uniqueness* (that the weighted geometric mean is the only aggregator satisfying the carried axioms) remains **Conjecture 1 — OPEN** (an unresolved `CAUCHY_ND` step plus a missing symmetry axiom in the Lean development). A gate "pass" is an advisory signal, never proven trust.
+- **Λ is NOT "proven trust" and NOT a closed theorem.** Bare A1–A5 uniqueness is **Conjecture 1, machine-checked false as stated**. Theorem U is conditional. A gate "pass" is an advisory signal, never proven trust.
 - **The axiom self-checks are empirical, not a proof.** They verify the carried axioms hold for *this implementation on the given data*; finding no violation is evidence, not a uniqueness proof.
 - **No fabricated benchmarks.** This is a universal kernel, not a hand-tuned binary — there are **no speedup claims** here.
 
@@ -205,7 +205,7 @@ The weighted geometric mean as a *less-compensatory* composite-indicator aggrega
 
 ## Provenance
 
-Backed by the Lean 4 formalization [`szl-holdings/lutar-lean`](https://github.com/szl-holdings/lutar-lean) (749 declarations / 14 axioms / 163 tracked sorries), DOI [10.5281/zenodo.20434308](https://doi.org/10.5281/zenodo.20434308). **Λ uniqueness = Conjecture 1 (open).**
+Backed by the Lean 4 formalization [`szl-holdings/lutar-lean`](https://github.com/szl-holdings/lutar-lean) (749 declarations / 14 axioms / 163 tracked sorries), DOI [10.5281/zenodo.20434308](https://doi.org/10.5281/zenodo.20434308). **Bare A1-A5 uniqueness is Conjecture 1, machine-checked false as stated. Theorem U is conditional.**
 
 ---
 
@@ -236,7 +236,7 @@ Apache-2.0 — see [`LICENSE`](./LICENSE). Copyright 2026 SZL Holdings.
 ---
 
 <sub>
-<b>SZL Holdings</b> · Λ = Conjecture 1 (advisory, weighted geometric mean) · uniqueness OPEN · NOT proven trust ·
+<b>SZL Holdings</b> · Λ = Conjecture 1 (advisory, weighted geometric mean) · bare statement false as stated; Theorem U conditional · NOT proven trust ·
 <a href="https://a-11-oy.com">a-11-oy.com</a> ·
 <a href="https://github.com/szl-holdings/szl-lambda-gate">github.com/szl-holdings/szl-lambda-gate</a> ·
 <a href="https://huggingface.co/SZLHOLDINGS/szl-lambda-gate">huggingface.co/SZLHOLDINGS/szl-lambda-gate</a>

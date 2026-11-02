@@ -30,7 +30,7 @@ Usage (as a subpackage of the canonical kernel)::
 Honesty: this is a universal (pure-Python) kernel — a correctness reference,
 not a hand-tuned CUDA speed record. No fabricated benchmarks. Its
 differentiator is verifiable governance, not raw FLOPs. Λ = Conjecture 1
-(advisory, uniqueness OPEN) — never described as proven trust anywhere.
+(advisory, bare statement false as stated; Theorem U conditional) — never described as proven trust anywhere.
 
 Note on torch.compile: every op is torch.compile(fullgraph=True)-compatible.
 Receipt emission is an eager-only side effect (it hashes materialized tensor

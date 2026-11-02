@@ -82,4 +82,4 @@ The existing release mirror and another session's kernel-target work remain
 responsible for publication. Review their target policy before replacing a
 Hub-only build: a more specific stale variant can outrank `torch-universal`.
 
-Lambda remains advisory; uniqueness is Conjecture 1 (open).
+Lambda remains advisory; uniqueness is Conjecture 1, machine-checked false as stated.
