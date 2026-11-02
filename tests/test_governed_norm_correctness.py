@@ -13,7 +13,7 @@ All comparisons use torch.testing.assert_close. CPU-only so it runs anywhere;
 this is a *universal* (pure-Python) kernel, validated as a correctness
 reference, not a tuned-CUDA speed claim.
 
-Run:  python -m pytest tests/test_correctness.py -q
+Run:  python -m pytest tests/test_governed_norm_correctness.py -q
 """
 import sys
 from pathlib import Path

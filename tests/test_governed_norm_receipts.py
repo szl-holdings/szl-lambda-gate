@@ -13,7 +13,7 @@ Verifies the provenance doctrine actually holds:
 All tests build their own ReceiptChain objects for tamper experiments so the
 process-wide default chain is never corrupted. CPU-only.
 
-Run:  python -m pytest tests/test_receipts.py -q
+Run:  python -m pytest tests/test_governed_norm_receipts.py -q
 """
 import importlib.util
 import sys
