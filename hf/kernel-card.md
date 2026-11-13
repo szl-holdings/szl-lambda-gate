@@ -108,3 +108,15 @@ Apache-2.0. Copyright 2026 SZL Holdings. Concept DOI
 the GitHub repository.
 
 Artwork: SZL Orbit · © 2026 SZL Holdings / Stephen Lutar · [CC BY 4.0](https://github.com/szl-holdings/szl-brand/blob/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/kit/LICENSE) · [Trademark notice](https://github.com/szl-holdings/szl-brand/blob/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/NOTICE).
+
+## Card completeness (2026-11-12)
+
+This section adds required card sections the card above did not have. It states only what files in this repository and the estate's own receipt datasets show; nothing here is a new result.
+
+### Benchmarks
+
+Not yet benchmarked. As of 2026-11-12 this repository has no benchmark results (latency, throughput or correctness-vs-reference timings). Published builds: `torch-cpu`, `torch-universal`. No GPU build is published, so no GPU performance claim is made.
+
+## Provenance
+
+The SZLHOLDINGS/szl-governed-norm kernel on the Hugging Face Hub is built from this repository (szl-holdings/szl-lambda-gate), which is its official source. The szl-holdings/szl-governed-norm GitHub repository is archived and is not a build source.
