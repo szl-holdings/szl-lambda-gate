@@ -606,6 +606,12 @@ class HubGit:
         return digests
 
 
+def needs_push_credentials(url: str) -> bool:
+    """True for network remotes (Hub HTTPS/SSH). Local file remotes used in tests do not."""
+    u = (url or "").strip().lower()
+    return u.startswith(("https://", "http://", "ssh://", "git@"))
+
+
 def check_credential(token: str | None) -> None:
     if not token:
         raise PublishError("UNAVAILABLE - secrets.HF_TOKEN is empty for this workflow")
@@ -662,8 +668,13 @@ def publish_kernel(cfg: KernelConfig, repo_root: Path, commit: str, *, dry_run: 
         for branch, (old, new, changes) in plan.items():
             receipt["branches"][branch] = {"parent": old, "candidate": new, "changes": changes}
         if updates:
-            hub.push(updates, dry_run=True)  # authenticated write + fast-forward preflight
-            receipt["write_preflight"] = "passed"
+            # Secret-free dry-run: compute candidates from an anonymous fetch, but do
+            # not attempt an authenticated push --dry-run against the Hub.
+            if dry_run and not token and needs_push_credentials(hub.url):
+                receipt["write_preflight"] = "skipped_unauthenticated_plan"
+            else:
+                hub.push(updates, dry_run=True)  # write + fast-forward preflight
+                receipt["write_preflight"] = "passed"
         if dry_run:
             receipt["state"] = "PLAN_ONLY"
             return receipt
@@ -701,7 +712,11 @@ def publish_twin(cfg: KernelConfig, repo_root: Path, commit: str, *, dry_run: bo
         unmanaged = {p: v for p, v in hub.tree(heads["main"]).items()
                      if p not in payload and not is_pruned(p, cfg.twin.prune_paths)}
         if new != heads["main"]:
-            hub.push({"main": new}, dry_run=True)
+            if dry_run and not token and needs_push_credentials(hub.url):
+                receipt["write_preflight"] = "skipped_unauthenticated_plan"
+            else:
+                hub.push({"main": new}, dry_run=True)
+                receipt["write_preflight"] = "passed"
         if dry_run:
             receipt["state"] = "PLAN_ONLY"
             return receipt
@@ -1019,14 +1034,26 @@ def main(argv: list[str] | None = None) -> int:
             _receipt(args.receipt, check_local(cfg, root, source, args.dist))
         elif args.command == "publish":
             token = os.environ.get("HF_TOKEN") or None
-            check_credential(token)
+            if args.dry_run:
+                if token:
+                    check_credential(token)
+                else:
+                    print("credential: skipped (dry-run, no HF_TOKEN); Hub write preflight will not run")
+            else:
+                check_credential(token)
             _receipt(args.receipt, publish_kernel(cfg, root, source, dry_run=args.dry_run, token=token))
         elif args.command == "twin":
             token = os.environ.get("HF_TOKEN") or None
             if cfg.twin is None:
                 print(f"::notice::{cfg.repo_id}: no model_twin configured; twin left untouched")
                 return 0
-            check_credential(token)
+            if args.dry_run:
+                if token:
+                    check_credential(token)
+                else:
+                    print("credential: skipped (dry-run, no HF_TOKEN); Hub write preflight will not run")
+            else:
+                check_credential(token)
             _receipt(args.receipt, publish_twin(cfg, root, source, dry_run=args.dry_run, token=token))
         elif args.command == "verify":
             _receipt(args.receipt, verify_hub(cfg, root, source, args.ref, args.default_branch,

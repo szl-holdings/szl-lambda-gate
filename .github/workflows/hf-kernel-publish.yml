@@ -10,7 +10,7 @@ name: hf-kernel-publish
 #                          version branch v<major>, verify in a fresh job through get_kernel,
 #                          then turn the model twin into a pointer (README only, no build/)
 #   workflow_dispatch   -> repair: the same for source_ref (default: latest release);
-#                          dry_run = build + candidate commits + authenticated push --dry-run
+#                          dry_run (default true) = build + candidate commits, no secret, no Hub write
 #   schedule (weekly)   -> drift guard: re-verify what get_kernel serves against GitHub and
 #                          fail if the latest release changed the kernel but was not published
 #
@@ -45,10 +45,10 @@ on:
         required: false
         default: ""
       dry_run:
-        description: Plan only (candidate commits + push --dry-run); writes nothing
+        description: Plan only (candidate commits, no Hub write, no secret). Set false only to publish after a reviewer approves the hf-publish environment.
         type: boolean
         required: false
-        default: false
+        default: true
       skip_model_twin:
         description: Do not touch the model-repo twin
         type: boolean
@@ -148,9 +148,48 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  # Secret-free plan. Must not reference secrets or an environment, or a dry
+  # run would block on a reviewer or fail on an empty HF_TOKEN.
+  dry-run:
+    needs: [plan, build]
+    if: needs.plan.outputs.mode == 'plan'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ${{ fromJson(needs.plan.outputs.kernels) }}
+    env:
+      KERNEL: ${{ matrix.kernel.repo_id }}
+      SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Plan kernel repo main + v${{ matrix.kernel.version }} (no secret)
+        run: |
+          set -euo pipefail
+          python scripts/szl_kernel_publish.py publish --kernel "$KERNEL" --source "$SOURCE_SHA" \
+            --receipt "receipts/publish-${{ matrix.kernel.slug }}.json" --dry-run
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: kernel-publish-${{ matrix.kernel.slug }}-${{ github.run_id }}
+          path: receipts/
+          if-no-files-found: warn
+          retention-days: 90
+
+  # Live publish. Create the hf-publish environment WITH a required reviewer
+  # and a main-only branch filter BEFORE merging this workflow, or GitHub may
+  # auto-create an unprotected environment of the same name.
   publish:
     needs: [plan, build]
-    if: needs.plan.outputs.mode == 'plan' || needs.plan.outputs.mode == 'publish'
+    if: needs.plan.outputs.mode == 'publish'
+    environment: hf-publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -244,6 +283,7 @@ jobs:
   model-twin:
     needs: [plan, verify]
     if: needs.plan.outputs.mode == 'publish' && needs.verify.result == 'success' && inputs.skip_model_twin != true
+    environment: hf-publish
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
