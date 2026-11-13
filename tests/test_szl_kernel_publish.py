@@ -226,6 +226,19 @@ class PublishTests(Fixture):
             self.assertIn(".gitattributes", files)
         self.assertEqual(receipt["branches"]["v1"]["parent"], None)
 
+
+    def test_needs_push_credentials_and_unauthenticated_plan_flag(self):
+        self.assertTrue(kp.needs_push_credentials("https://huggingface.co/kernels/SZLHOLDINGS/demo.git"))
+        self.assertTrue(kp.needs_push_credentials("git@github.com:szl-holdings/demo.git"))
+        self.assertFalse(kp.needs_push_credentials(self.hub))
+        self.assertFalse(kp.needs_push_credentials(str(self.hub)))
+
+    def test_check_credential_rejects_empty(self):
+        with self.assertRaisesRegex(kp.PublishError, "secrets.HF_TOKEN is empty"):
+            kp.check_credential(None)
+        with self.assertRaisesRegex(kp.PublishError, "secrets.HF_TOKEN is empty"):
+            kp.check_credential("")
+
     def test_idempotent_and_dry_run(self):
         self.publish(self.commit)
         again = self.publish(self.commit)
