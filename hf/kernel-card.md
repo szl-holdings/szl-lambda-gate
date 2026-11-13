@@ -116,3 +116,7 @@ This section adds required card sections the card above did not have. It states 
 ### Benchmarks
 
 Not yet benchmarked. As of 2026-11-12 this repository has no benchmark results (latency, throughput or correctness-vs-reference timings). Published builds: `torch-cpu`, `torch-universal`. No GPU build is published, so no GPU performance claim is made.
+
+## Provenance
+
+The SZLHOLDINGS/szl-governed-norm kernel on the Hugging Face Hub is built from this repository (szl-holdings/szl-lambda-gate), which is its official source. The szl-holdings/szl-governed-norm GitHub repository is archived and is not a build source.
