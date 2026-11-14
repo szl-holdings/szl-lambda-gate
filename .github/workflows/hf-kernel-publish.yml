@@ -5,7 +5,7 @@ name: hf-kernel-publish
 #
 # GitHub is the only source. For each kernel in .github/hf-kernels.json:
 #   pull_request        -> build both noarch variants from torch-ext/ and load them with
-#                          kernels==0.17.2 + CPU torch (no Hub access, no secret)
+#                          kernels==0.18.2 + CPU torch (no Hub access, no secret)
 #   release (published) -> build, publish the kernel repo (repo_type kernel) on main AND the
 #                          version branch v<major>, verify in a fresh job through get_kernel,
 #                          then turn the model twin into a pointer (README only, no build/)
@@ -66,7 +66,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.12"
-  KERNELS_VERSION: "0.17.2"
+  KERNELS_VERSION: "0.18.2"
   TORCH_VERSION: "2.10.0"
   TORCH_INDEX: https://download.pytorch.org/whl/cpu
   PYTHONDONTWRITEBYTECODE: "1"
