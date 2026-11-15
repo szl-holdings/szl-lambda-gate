@@ -34,7 +34,7 @@ PRIOR ART (honest attribution): the weighted geometric mean as a *less-
 
 PROVENANCE: backed by the Lean 4 formalization szl-holdings/lutar-lean
   (749 declarations / 14 axioms / 163 tracked sorries),
-  DOI 10.5281/zenodo.20434308 (lutar-lean).
+  DOI 10.5281/zenodo.24239654 (lutar-lean).
   Bare A1-A5 uniqueness is Conjecture 1, machine-checked false as stated. Theorem U is conditional.
 
 Axioms carried (Lutar/Axioms.lean), available below as runtime self-checks:
