@@ -37,7 +37,7 @@ WHAT Λ IS / IS NOT (HONESTY — SZL Holdings doctrine v11):
 
 PROVENANCE: backed by the Lean 4 formalization szl-holdings/lutar-lean
   (749 declarations / 14 axioms / 163 tracked sorries),
-  DOI 10.5281/zenodo.20434308 (lutar-lean). Bare A1-A5 uniqueness is Conjecture 1, machine-checked false as stated. Theorem U is conditional.
+  DOI 10.5281/zenodo.24239654 (lutar-lean). Bare A1-A5 uniqueness is Conjecture 1, machine-checked false as stated. Theorem U is conditional.
 """
 from typing import Optional
 
@@ -114,7 +114,7 @@ PROVENANCE = {
     "lean_declarations": 749,
     "lean_axioms": 14,
     "lean_tracked_sorries": 163,
-    "doi_lutar_lean": "10.5281/zenodo.20434308",
+    "doi_lutar_lean": "10.5281/zenodo.24239654",
     "lambda_status": "Conjecture 1 is machine-checked false as stated; Theorem U is conditional; advisory only",
 }
 

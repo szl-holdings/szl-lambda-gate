@@ -278,7 +278,7 @@ def test_provenance_and_honesty_metadata():
     assert lg.PROVENANCE["lean_declarations"] == 749
     assert lg.PROVENANCE["lean_axioms"] == 14
     assert lg.PROVENANCE["lean_tracked_sorries"] == 163
-    assert lg.PROVENANCE["doi_lutar_lean"] == "10.5281/zenodo.20434308"
+    assert lg.PROVENANCE["doi_lutar_lean"] == "10.5281/zenodo.24239654"
     assert "Conjecture 1" in lg.PROVENANCE["lambda_status"]
     assert "ADVISORY" in lg.DOCTRINE_FOOTER
     assert "NOT proven trust" in lg.DOCTRINE_FOOTER
