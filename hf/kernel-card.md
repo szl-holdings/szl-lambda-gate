@@ -8,7 +8,7 @@ tags:
   - gate
   - provenance
   - szl-holdings
-  - doi:10.5281/zenodo.19944926
+  - doi:10.5281/zenodo.24239896
 ---
 
 <p><img src="https://raw.githubusercontent.com/szl-holdings/szl-brand/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/kit/logos/orbit-v2/suite/szl-icon-32.svg" alt="SZL Holdings" width="40" height="40" /></p>
@@ -104,7 +104,7 @@ in GitHub Actions for the source commit.
 ## License and citation
 
 Apache-2.0. Copyright 2026 SZL Holdings. Concept DOI
-[10.5281/zenodo.19944926](https://doi.org/10.5281/zenodo.19944926); see `CITATION.cff` in
+[10.5281/zenodo.24239896](https://doi.org/10.5281/zenodo.24239896); see `CITATION.cff` in
 the GitHub repository.
 
 Artwork: SZL Orbit · © 2026 SZL Holdings / Stephen Lutar · [CC BY 4.0](https://github.com/szl-holdings/szl-brand/blob/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/kit/LICENSE) · [Trademark notice](https://github.com/szl-holdings/szl-brand/blob/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/NOTICE).
