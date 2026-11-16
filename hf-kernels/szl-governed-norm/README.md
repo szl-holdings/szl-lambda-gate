@@ -4,6 +4,7 @@ library_name: kernels
 tags:
 - kernel
 - szl-holdings
+- doi:10.5281/zenodo.19944926
 szl:
   source_repo: szl-holdings/szl-lambda-gate
   proof_url: https://github.com/szl-holdings/szl-lambda-gate

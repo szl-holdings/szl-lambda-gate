@@ -8,7 +8,7 @@ tags:
   - gate
   - provenance
   - szl-holdings
-  - doi:10.5281/zenodo.24239896
+  - doi:10.5281/zenodo.19944926
 ---
 
 <p><img src="https://raw.githubusercontent.com/szl-holdings/szl-brand/27d12e77fc0f9f1a0e5fae8b34adf2380d51d070/kit/logos/orbit-v2/suite/szl-icon-32.svg" alt="SZL Holdings" width="40" height="40" /></p>
