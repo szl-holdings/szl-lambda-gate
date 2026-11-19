@@ -66,7 +66,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.12"
-  KERNELS_VERSION: "0.18.2"
+  KERNELS_VERSION: "0.18.3"
   TORCH_VERSION: "2.10.0"
   TORCH_INDEX: https://download.pytorch.org/whl/cpu
   PYTHONDONTWRITEBYTECODE: "1"
@@ -109,6 +109,10 @@ jobs:
   build:
     needs: plan
     if: needs.plan.outputs.mode == 'check' || needs.plan.outputs.mode == 'plan' || needs.plan.outputs.mode == 'publish'
+    permissions:
+      contents: read
+      id-token: write      # Sigstore/Fulcio for the attestation only
+      attestations: write  # GitHub artifact attestation (SLSA build provenance)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -134,6 +138,11 @@ jobs:
         run: >-
           python scripts/szl_kernel_publish.py build --kernel "$KERNEL" --source "$SOURCE_SHA"
           --out "dist/${{ matrix.kernel.slug }}" --receipt "receipts/build-${{ matrix.kernel.slug }}.json"
+      - name: Attest build provenance (publish runs only)
+        if: needs.plan.outputs.mode == 'publish'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/${{ matrix.kernel.slug }}/build/**
       - name: Load both variants with kernels and run the smoke hook
         run: >-
           python scripts/szl_kernel_publish.py check-local --kernel "$KERNEL" --source "$SOURCE_SHA"
@@ -190,6 +199,9 @@ jobs:
     needs: [plan, build]
     if: needs.plan.outputs.mode == 'publish'
     environment: hf-publish
+    permissions:
+      contents: read
+      id-token: write  # keyless Sigstore signature over build/*/metadata.json
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -207,6 +219,24 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      # Sign the deterministic metadata.json of each variant; publish refuses a
+      # bundle whose signed bytes differ from what it is about to push.
+      - name: Build variants to sign
+        run: >-
+          python scripts/szl_kernel_publish.py build --kernel "$KERNEL" --source "$SOURCE_SHA"
+          --out signed --receipt "receipts/build-signed-${{ matrix.kernel.slug }}.json"
+      - name: Sign build/*/metadata.json (Sigstore keyless, GitHub OIDC)
+        uses: sigstore/gh-action-sigstore-python@790bc6befb9d733738f18d8f895854b453640ec9 # v3.5.0
+        with:
+          inputs: signed/build/*/metadata.json
+          release-signing-artifacts: false
+      - name: Rename bundles to the kernels layout and self-verify
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "sigstore==4.5.1"
+          for bundle in signed/build/*/metadata.json.sigstore.json; do mv "$bundle" "${bundle%.json}"; done
+          python scripts/szl_verify_signatures.py --root signed --identity-repo "$GITHUB_REPOSITORY" --require \
+            --report "receipts/signatures-${{ matrix.kernel.slug }}.json"
       # Rebuilt in-process from the same Git objects (deterministic), so no artifact is trusted.
       - name: Publish kernel repo main + v${{ matrix.kernel.version }}
         env:
@@ -217,7 +247,7 @@ jobs:
           extra=()
           if [ "$DRY_RUN" = "true" ]; then extra+=(--dry-run); fi
           python scripts/szl_kernel_publish.py publish --kernel "$KERNEL" --source "$SOURCE_SHA" \
-            --receipt "receipts/publish-${{ matrix.kernel.slug }}.json" "${extra[@]}"
+            --receipt "receipts/publish-${{ matrix.kernel.slug }}.json" --signatures signed "${extra[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

@@ -50,6 +50,9 @@ BINDING_PATH = "SZL_KERNEL_SOURCE.json"
 BINDING_SCHEMA = "szl.kernel-source-binding/v1"
 PUBLISHER = "scripts/szl_kernel_publish.py"
 VARIANTS = ("torch-cpu", "torch-universal")
+# Detached Sigstore bundle over build/<variant>/metadata.json (kernels' layout; excluded from digests).
+SIGNATURE_NAME = "metadata.json.sigstore"
+SIGSTORE_MEDIA_PREFIX = "application/vnd.dev.sigstore.bundle"
 HUB = "https://huggingface.co"
 KERNEL_NAME = re.compile(r"^[a-z][-a-z0-9]*[a-z0-9]$")  # kernels-common KernelName
 PACKAGE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -474,10 +477,39 @@ def build_payload(cfg: KernelConfig, repo_root: Path, commit: str) -> dict[str, 
         "packages": [{"src": p.src, "name": p.name} for p in cfg.packages],
         "content_sha256": content_key(payload),
         "files": {path: sha256_hex(data) for path, data in sorted(payload.items())},
-        "load": {"call": f'get_kernel("{cfg.repo_id}", version={cfg.version}, trust_remote_code=True)',
+        "load": {"call": f'get_kernel("{cfg.repo_id}", version={cfg.version}, trust_remote_code=["{cfg.repo_id}"])',
                  "requires": "kernels>=0.17.2"},
     })
     return payload
+
+
+def attach_signatures(payload: dict[str, bytes], signed: Path) -> dict[str, str]:
+    """Add CI-made Sigstore bundles to the payload, fail closed on any mismatch.
+
+    ``signed`` is a ``build`` output of the same commit whose metadata.json files
+    were signed in this job. Every variant must have a bundle, and the signed bytes
+    must equal the metadata.json about to be published (the build is deterministic).
+    Cryptographic verification is scripts/szl_verify_signatures.py's job.
+    """
+    added: dict[str, str] = {}
+    for variant in VARIANTS:
+        meta_path = f"build/{variant}/metadata.json"
+        signed_meta = signed / meta_path
+        bundle = signed / f"build/{variant}/{SIGNATURE_NAME}"
+        if not signed_meta.is_file() or not bundle.is_file():
+            raise PublishError(f"{variant}: signature bundle or signed metadata.json missing under {signed}")
+        if signed_meta.read_bytes() != payload[meta_path]:
+            raise PublishError(f"{variant}: signed metadata.json differs from the metadata.json being published")
+        data = bundle.read_bytes()
+        try:
+            media = json.loads(data).get("mediaType", "")
+        except ValueError:
+            media = ""
+        if not str(media).startswith(SIGSTORE_MEDIA_PREFIX):
+            raise PublishError(f"{variant}: {SIGNATURE_NAME} is not a Sigstore bundle")
+        payload[f"build/{variant}/{SIGNATURE_NAME}"] = data
+        added[variant] = sha256_hex(data)
+    return added
 
 
 def write_dist(payload: dict[str, bytes], out: Path) -> None:
@@ -628,13 +660,16 @@ def check_credential(token: str | None) -> None:
 
 
 def publish_kernel(cfg: KernelConfig, repo_root: Path, commit: str, *, dry_run: bool,
-                   token: str | None, url: str | None = None, workdir: Path | None = None) -> dict:
+                   token: str | None, url: str | None = None, workdir: Path | None = None,
+                   signatures: Path | None = None) -> dict:
     payload = build_payload(cfg, repo_root, commit)
+    signed = attach_signatures(payload, signatures) if signatures else {}
     receipt: dict[str, Any] = {
         "schema": "szl.kernel-publication/v1", "repo_id": cfg.repo_id, "repo_type": "kernel",
         "source_repository": cfg.source_repository, "source_commit": commit,
         "kernel_version": cfg.version, "dry_run": dry_run, "state": "HOLD", "branches": {},
         "payload_sha256": {p: sha256_hex(d) for p, d in sorted(payload.items())},
+        "signatures": signed or "NONE",
     }
     run_url = (f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/"
                f"{os.environ.get('GITHUB_REPOSITORY', cfg.source_repository)}/actions/runs/"
@@ -744,6 +779,10 @@ def compare_variant(served_root: Path, variant: str, payload: dict[str, bytes]) 
     prefix = f"build/{variant}/"
     expected = {p[len(prefix):]: d for p, d in payload.items() if p.startswith(prefix)}
     served = files_under(served_root)
+    # Sigstore bundles are not deterministic; their validity is checked by
+    # scripts/szl_verify_signatures.py, so they are excluded from the byte comparison.
+    expected.pop(SIGNATURE_NAME, None)
+    served.pop(SIGNATURE_NAME, None)
     if set(served) != set(expected):
         raise PublishError(f"{variant}: served file set differs from GitHub source: "
                            f"extra={sorted(set(served) - set(expected))} "
@@ -857,7 +896,7 @@ def verify_hub(cfg: KernelConfig, repo_root: Path, source: str, ref: str, defaul
 
     # 1. The call consumers make, in a fresh cache.
     kwargs = {"revision": "main"} if branch == "main" else {"version": cfg.version}
-    module = kernels.get_kernel(cfg.repo_id, trust_remote_code=True, **kwargs)
+    module = kernels.get_kernel(cfg.repo_id, trust_remote_code=[cfg.repo_id], **kwargs)
     served = Path(module.__file__)  # snapshot path; do not resolve the blob symlinks
     variant_root = served.parent.parent
     if (served.parent.name != cfg.packages[0].name or variant_root.parent.name != "build"
@@ -1009,6 +1048,9 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--out" if name == "build" else "--dist", required=True, type=Path)
         if name in ("publish", "twin"):
             p.add_argument("--dry-run", action="store_true")
+            if name == "publish":
+                p.add_argument("--signatures", type=Path, default=None,
+                               help="build output whose metadata.json files were signed in this job")
         if name == "verify":
             p.add_argument("--ref", choices=("version", "main"), required=True)
             p.add_argument("--default-branch", default=os.environ.get("DEFAULT_BRANCH") or "main")
@@ -1041,7 +1083,8 @@ def main(argv: list[str] | None = None) -> int:
                     print("credential: skipped (dry-run, no HF_TOKEN); Hub write preflight will not run")
             else:
                 check_credential(token)
-            _receipt(args.receipt, publish_kernel(cfg, root, source, dry_run=args.dry_run, token=token))
+            _receipt(args.receipt, publish_kernel(cfg, root, source, dry_run=args.dry_run, token=token,
+                                                  signatures=args.signatures))
         elif args.command == "twin":
             token = os.environ.get("HF_TOKEN") or None
             if cfg.twin is None:
